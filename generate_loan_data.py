@@ -25,9 +25,12 @@ simplification: ignoring censoring is a classic mistake that makes recent
 cohorts look artificially healthy.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
+LOANS_CSV = Path(__file__).resolve().parent / "loans.csv"
 RNG = np.random.default_rng(seed=42)  # fixed seed — reproducible synthetic data
 HORIZON_MONTHS = 24  # "today" = end of month 24
 CURVE_STEEPNESS = 0.55  # same shape family as the assumption-based POC
@@ -114,7 +117,7 @@ def generate():
 
 if __name__ == "__main__":
     df = generate()
-    df.to_csv("loans.csv", index=False)
+    df.to_csv(LOANS_CSV, index=False)
     print(f"Generated {len(df):,} loan records across {df['product'].nunique()} products.")
     print(df.groupby("product").agg(
         loans=("loan_id", "count"),
