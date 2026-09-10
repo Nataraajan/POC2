@@ -1,24 +1,14 @@
 """
-Lending Vintage & Loss Curve POC — app.py
+CLAB Forecast POC — app.py
 
-Two modes, same underlying revenue-rollup mechanism (same cohort-rollup
-pattern already used in the SaaS revenue model for contract renewals,
-applied here to loan vintages):
+A lending-funnel forecasting proof of concept: applications -> approvals ->
+originations -> CLAB roll-forward -> revenue, with default rates driven by
+a vintage curve that can be either assumed (tunable sliders) or derived
+from historical loan-level data via real SQL aggregation.
 
-  1. "Tune assumptions live" — a simple parameterized S-curve, adjustable
-     in real time. Fast, good for exploring "what if the default rate
-     were X" without any data.
-  2. "Derive from historical data" — loads synthetic loan-level data,
-     aggregates it with real SQL (SQLite), and derives the ACTUAL
-     empirical default curve per product from that data — directly
-     mirroring how a real build would use Propel's own loan history
-     instead of an assumed curve shape.
-
-No randomization in the analysis logic itself in either mode — mode 1's
-curve is a deterministic function of its two inputs; mode 2's curve is a
-deterministic aggregation of whatever data it's given. (The synthetic data
-generator does use randomness to fabricate realistic test data — see
-generate_loan_data.py's docstring for why that's a different concern.)
+Same visual language as the SaaS revenue model (navy/green/blue/purple/
+amber/red palette, card styling, typography) — not a pixel-identical
+rebuild, kept simple and fast to navigate.
 """
 
 import sqlite3
@@ -27,198 +17,225 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
-from generate_loan_data import PRODUCTS, true_cumulative_default_pct
+from generate_loan_data import PRODUCTS as HIST_PRODUCTS, true_cumulative_default_pct
 from derive_vintage_curves import VINTAGE_AGGREGATION_SQL, derive_with_loan_detail
+from clab_forecast_engine import forecast_clab, aggregate_to_quarterly
 
-st.set_page_config(page_title="Lending Vintage & Loss Curve POC", layout="wide")
+NAVY = "#1E2761"
+GREEN = "#16A34A"
+BLUE = "#2563EB"
+PURPLE = "#9333EA"
+AMBER = "#D97706"
+RED = "#DC2626"
 
-st.title("Lending Vintage & Loss Curve — Proof of Concept")
+st.set_page_config(page_title="CLAB Forecast POC", layout="wide")
+
+st.markdown(f"""
+<style>
+    div[data-testid="stNumberInput"] input {{ max-width: 130px; }}
+    .card-title {{ color: {NAVY}; font-weight: 700; }}
+    div.stButton > button:first-child {{ background-color: {NAVY}; color: white; }}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(f"<h1 style='color:{NAVY};'>CLAB Forecast — Applications to Portfolio Revenue</h1>", unsafe_allow_html=True)
 st.caption(
-    "Same cohort-rollup pattern as the SaaS revenue model, applied to loan vintages: "
-    "each month's originations behave like a cohort with its own lifecycle, rolling up "
-    "into total portfolio revenue and losses month by month."
+    "Applications → approvals → originations → CLAB roll-forward → revenue. "
+    "Same balance-roll-forward pattern as the SaaS revenue model's ARR bridge "
+    "(Ending = Beginning + New − Losses), applied to a loan book instead of a subscription book."
 )
 
-CURVE_STEEPNESS = 0.55
+
+def _fmt_dollar_scaled(val):
+    """Same auto-scaling convention as the SaaS revenue model."""
+    if val is None or pd.isna(val):
+        return "—"
+    if abs(val) >= 1_000_000:
+        return f"${val / 1_000_000:,.2f}M"
+    if abs(val) >= 1_000:
+        return f"${val / 1_000:,.2f}K"
+    return f"${val:,.0f}"
 
 
-def cumulative_default_pct(months_on_book, midpoint_months, total_rate_pct):
-    raw = 1.0 / (1.0 + np.exp(-CURVE_STEEPNESS * (months_on_book - midpoint_months)))
-    raw_at_zero = 1.0 / (1.0 + np.exp(CURVE_STEEPNESS * midpoint_months))
-    normalized = (raw - raw_at_zero) / (1.0 - raw_at_zero)
-    return total_rate_pct * normalized
-
-
-def run_portfolio_rollup(monthly_originations, avg_loan_size, annual_rate_pct,
-                          horizon_months, midpoint_months, total_default_rate_pct):
-    """Same rollup mechanism regardless of where the curve came from —
-    assumed or derived. Mirrors the revenue model's principle that new
-    business and renewals both flow through the same recognition engine."""
-    monthly_rate = annual_rate_pct / 100.0 / 12.0
-    original_balance_per_cohort = monthly_originations * avg_loan_size
-
-    rows = []
-    for calendar_month in range(1, horizon_months + 1):
-        total_revenue, total_new_defaults, total_outstanding = 0.0, 0.0, 0.0
-        for origination_month in range(1, calendar_month + 1):
-            age = calendar_month - origination_month
-            cum_now = cumulative_default_pct(np.array([age]), midpoint_months, total_default_rate_pct)[0]
-            cum_prev = cumulative_default_pct(np.array([age - 1]), midpoint_months, total_default_rate_pct)[0] if age > 0 else 0.0
-            incr_pct = (cum_now - cum_prev) / 100.0
-            outstanding_pct = 1.0 - (cum_now / 100.0)
-
-            total_new_defaults += original_balance_per_cohort * incr_pct
-            cohort_outstanding = original_balance_per_cohort * outstanding_pct
-            total_outstanding += cohort_outstanding
-            total_revenue += cohort_outstanding * monthly_rate
-
-        rows.append({
-            "month": calendar_month, "interest_revenue": total_revenue,
-            "new_defaults": total_new_defaults, "net_revenue": total_revenue - total_new_defaults,
-            "outstanding_balance": total_outstanding,
-        })
-    df = pd.DataFrame(rows)
-    df["cumulative_net_revenue"] = df["net_revenue"].cumsum()
-    return df
-
-
-def render_portfolio_section(monthly_originations, avg_loan_size, annual_rate_pct,
-                              horizon_months, midpoint_months, total_default_rate_pct):
-    portfolio_df = run_portfolio_rollup(monthly_originations, avg_loan_size, annual_rate_pct,
-                                         horizon_months, midpoint_months, total_default_rate_pct)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Month-end outstanding balance", f"${portfolio_df['outstanding_balance'].iloc[-1]:,.0f}")
-    m2.metric("Latest month interest revenue", f"${portfolio_df['interest_revenue'].iloc[-1]:,.0f}")
-    m3.metric("Latest month new defaults", f"${portfolio_df['new_defaults'].iloc[-1]:,.0f}")
-    m4.metric("Cumulative net revenue", f"${portfolio_df['cumulative_net_revenue'].iloc[-1]:,.0f}")
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=portfolio_df["month"], y=portfolio_df["interest_revenue"], name="Interest/fee revenue", line=dict(color="#16A34A")))
-    fig.add_trace(go.Scatter(x=portfolio_df["month"], y=portfolio_df["new_defaults"], name="New defaults (losses)", line=dict(color="#DC2626")))
-    fig.add_trace(go.Scatter(x=portfolio_df["month"], y=portfolio_df["net_revenue"], name="Net revenue", line=dict(color="#2563EB", width=3)))
-    fig.update_layout(xaxis_title="Calendar month", yaxis_title="$", height=380,
-                       margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.1))
-    st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("View underlying monthly data"):
-        st.dataframe(portfolio_df.style.format({
-            "interest_revenue": "${:,.0f}", "new_defaults": "${:,.0f}",
-            "net_revenue": "${:,.0f}", "outstanding_balance": "${:,.0f}", "cumulative_net_revenue": "${:,.0f}",
-        }), use_container_width=True)
-
+PRODUCT_DEFAULTS = {
+    "Short-Term": dict(applications=30000, approval_rate=30.0, avg_loan_size=1500.0,
+                        annual_yield=100.0, days_to_default=60, total_default_rate=12.0, color=RED),
+    "Installment": dict(applications=12000, approval_rate=45.0, avg_loan_size=4000.0,
+                         annual_yield=55.0, days_to_default=150, total_default_rate=6.0, color=BLUE),
+}
 
 # ===========================================================================
-# MODE SELECTION
+# ASSUMPTIONS
 # ===========================================================================
-mode = st.radio("Mode", ["Tune assumptions live", "Derive from historical data"], horizontal=True)
+st.subheader("Forecast Settings")
+s1, s2 = st.columns(2)
+horizon_months = s1.slider("Horizon (months)", 6, 36, 24)
+use_derived_curve = s2.checkbox("Overlay default curve derived from historical data (vintage analysis)", value=False,
+                                 help="Off: use the assumption sliders below directly. On: derive the default curve from mock historical loan-level data via SQL aggregation, and use that instead.")
 
-if mode == "Tune assumptions live":
-    st.subheader("Assumptions")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    monthly_originations = c1.number_input("New customers/month", 100, 500_000, 40_000, step=1000,
-                                            help="How many new loans originate each month.")
-    avg_loan_size = c2.number_input("Avg loan size ($)", 100, 100_000, 2_000, step=100)
-    annual_rate_pct = c3.slider("Annual interest/fee rate (%)", 0.0, 60.0, 24.0)
-    days_to_default = c4.number_input("Days to default", 1, 365, 90, step=1,
-                                       help="Days past due before a loan is considered defaulted. Shifts the curve's inflection point.")
-    total_default_rate_pct = c5.slider("Total default rate (%)", 0.0, 50.0, 8.0,
-                                        help="Ultimate % of a vintage's original balance that ends up defaulted, over its full lifetime.")
-    horizon_months = st.slider("Horizon (months)", 6, 36, 24)
-    midpoint_months = days_to_default / 30.0
+product_tabs = st.tabs(list(PRODUCT_DEFAULTS.keys()) + ["Combined"])
+product_forecasts = {}
+product_configs = {}
 
-    st.info(f"Curve inflection point: ~{midpoint_months:.1f} months on book "
-            f"(from {days_to_default} days to default). Ultimate default rate: {total_default_rate_pct:.1f}%.", icon="ℹ️")
-
-    st.subheader("Vintage Default Curve (single cohort)")
-    st.caption("What one month's originations look like over their own lifecycle — adjust the inputs above and watch it reshape.")
-    months_axis = np.arange(0, horizon_months + 1)
-    cum_default = cumulative_default_pct(months_axis, midpoint_months, total_default_rate_pct)
-    fig_curve = go.Figure()
-    fig_curve.add_trace(go.Scatter(x=months_axis, y=cum_default, mode="lines", name="Cumulative default %",
-                                    line=dict(color="#DC2626", width=3), fill="tozeroy"))
-    fig_curve.update_layout(xaxis_title="Months on book", yaxis_title="Cumulative default %", yaxis_ticksuffix="%",
-                             height=320, margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig_curve, use_container_width=True)
-
-    st.subheader("Portfolio Rollup")
-    render_portfolio_section(monthly_originations, avg_loan_size, annual_rate_pct,
-                              horizon_months, midpoint_months, total_default_rate_pct)
-
-else:
-    st.subheader("Historical Data")
-    st.caption(
-        "Loads synthetic loan-level data (37,500 rows across 2 products, 24 months of originations) "
-        "and derives the ACTUAL default curve per product using real SQL aggregation — "
-        "the same 'push aggregation to the database, analyze the smaller result in Python' approach "
-        "that scales to millions of real rows."
-    )
-
+# Load historical data once if needed
+loans_df = None
+if use_derived_curve:
     try:
         loans_df = pd.read_csv("loans.csv")
     except FileNotFoundError:
-        st.error("loans.csv not found — run `python3 generate_loan_data.py` first to generate it.")
+        st.error("loans.csv not found — run `python3 generate_loan_data.py` first.")
         st.stop()
 
+for i, product in enumerate(PRODUCT_DEFAULTS.keys()):
+    with product_tabs[i]:
+        defaults = PRODUCT_DEFAULTS[product]
+        product_color = defaults["color"]
+        st.markdown(f"<h3 style='color:{product_color};'>{product}</h3>", unsafe_allow_html=True)
+
+        c1, c2, c3, c4 = st.columns(4)
+        applications = c1.number_input("Applications/month", 100, 500_000, defaults["applications"], step=500,
+                                        key=f"{product}_apps", help="Baseline monthly application volume, before seasonality.")
+        approval_rate = c2.slider("Approval rate (%)", 1.0, 100.0, defaults["approval_rate"], key=f"{product}_appr")
+        avg_loan_size = c3.number_input("Avg loan size ($)", 100, 100_000, int(defaults["avg_loan_size"]), step=100, key=f"{product}_size")
+        annual_yield = c4.slider("Annual yield (%)", 0.0, 200.0, defaults["annual_yield"], key=f"{product}_yield",
+                                  help="Annualized revenue yield applied to ending CLAB each month.")
+
+        with st.expander("Seasonality (12-month pattern)"):
+            st.caption("Explicit, user-set monthly multipliers — cycles automatically for horizons beyond 12 months.")
+            month_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            season_cols = st.columns(6)
+            seasonality = [
+                season_cols[m % 6].slider(month_labels[m], 0.5, 1.5, 1.0, key=f"{product}_season_{m}")
+                for m in range(12)
+            ]
+
+        if use_derived_curve:
+            derived = derive_with_loan_detail(loans_df, product)
+            total_default_rate = derived["cumulative_default_pct"].iloc[-1]
+            midpoint_months = HIST_PRODUCTS[product]["true_days_to_default"] / 30.0
+            st.info(f"Using derived curve: {total_default_rate:.2f}% total default rate "
+                    f"(from historical vintage analysis — see 'Vintage Analysis' tab below).", icon="📊")
+        else:
+            d1, d2 = st.columns(2)
+            days_to_default = d1.number_input("Days to default", 1, 365, defaults["days_to_default"], key=f"{product}_dtd")
+            total_default_rate = d2.slider("Total default rate (%)", 0.0, 50.0, defaults["total_default_rate"], key=f"{product}_tdr")
+            midpoint_months = days_to_default / 30.0
+
+        product_configs[product] = dict(applications=applications, approval_rate=approval_rate,
+                                         avg_loan_size=avg_loan_size, annual_yield=annual_yield,
+                                         midpoint_months=midpoint_months, total_default_rate=total_default_rate)
+
+        forecast_df = forecast_clab(
+            monthly_applications_base=applications, seasonality_pattern=seasonality,
+            approval_rate_pct=approval_rate, avg_loan_size=avg_loan_size, annual_yield_pct=annual_yield,
+            midpoint_months=midpoint_months, total_default_rate_pct=total_default_rate,
+            horizon_months=horizon_months,
+        )
+        product_forecasts[product] = forecast_df
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Ending CLAB", _fmt_dollar_scaled(forecast_df["ending_clab"].iloc[-1]))
+        m2.metric("Latest month revenue", _fmt_dollar_scaled(forecast_df["revenue"].iloc[-1]))
+        m3.metric("Latest month charge-offs", _fmt_dollar_scaled(forecast_df["charge_offs"].iloc[-1]))
+        m4.metric("Total revenue (horizon)", _fmt_dollar_scaled(forecast_df["revenue"].sum()))
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=forecast_df["month"], y=forecast_df["ending_clab"], name="Ending CLAB",
+                                  line=dict(color=defaults["color"], width=3), fill="tozeroy"))
+        fig.update_layout(xaxis_title="Month", yaxis_title="$", height=320, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+
+        with st.expander("View underlying monthly data"):
+            display_df = forecast_df.copy()
+            for col in ["applications", "originations", "beginning_clab", "charge_offs", "ending_clab", "revenue"]:
+                if col != "applications":
+                    display_df[col] = display_df[col].apply(_fmt_dollar_scaled)
+                else:
+                    display_df[col] = display_df[col].round(0)
+            st.dataframe(display_df, use_container_width=True)
+
+# ===========================================================================
+# COMBINED VIEW
+# ===========================================================================
+with product_tabs[-1]:
+    st.markdown(f"<h3 style='color:{NAVY};'>Combined — All Products</h3>", unsafe_allow_html=True)
+    combined_df = product_forecasts[list(PRODUCT_DEFAULTS.keys())[0]][["month"]].copy()
+    for col in ["applications", "originations", "beginning_clab", "charge_offs", "ending_clab", "revenue"]:
+        combined_df[col] = sum(product_forecasts[p][col] for p in PRODUCT_DEFAULTS.keys())
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Ending CLAB", _fmt_dollar_scaled(combined_df["ending_clab"].iloc[-1]))
+    m2.metric("Latest month revenue", _fmt_dollar_scaled(combined_df["revenue"].iloc[-1]))
+    m3.metric("Latest month charge-offs", _fmt_dollar_scaled(combined_df["charge_offs"].iloc[-1]))
+    m4.metric("Total revenue (horizon)", _fmt_dollar_scaled(combined_df["revenue"].sum()))
+
+    fig_combined = go.Figure()
+    fig_combined.add_trace(go.Scatter(x=combined_df["month"], y=combined_df["revenue"], name="Revenue", line=dict(color=GREEN, width=3)))
+    fig_combined.add_trace(go.Scatter(x=combined_df["month"], y=combined_df["charge_offs"], name="Charge-offs", line=dict(color=RED, width=2)))
+    fig_combined.add_trace(go.Scatter(x=combined_df["month"], y=combined_df["ending_clab"], name="Ending CLAB", line=dict(color=NAVY, width=3, dash="dot")))
+    fig_combined.update_layout(xaxis_title="Month", yaxis_title="$", height=380, margin=dict(l=10, r=10, t=10, b=10),
+                                legend=dict(orientation="h", y=1.1))
+    st.plotly_chart(fig_combined, use_container_width=True)
+
+    st.markdown("#### Quarterly Rollup (matches how CLAB is reported externally)")
+    quarterly_df = aggregate_to_quarterly(combined_df)
+    display_q = quarterly_df.copy()
+    for col in ["applications", "originations", "charge_offs", "revenue", "ending_clab", "beginning_clab"]:
+        if col != "applications":
+            display_q[col] = display_q[col].apply(_fmt_dollar_scaled)
+        else:
+            display_q[col] = display_q[col].round(0)
+    st.dataframe(display_q, use_container_width=True)
+
+# ===========================================================================
+# VINTAGE ANALYSIS — the "how am I doing it, how am I overlaying it" section
+# ===========================================================================
+st.divider()
+st.markdown(f"<h2 style='color:{NAVY};'>Vintage Analysis — Historical Data</h2>", unsafe_allow_html=True)
+st.caption(
+    "Mock historical loan-level data (37,500 rows across 2 products, 24 months of originations), "
+    "aggregated with real SQL — the same approach that scales to millions of real rows: push "
+    "aggregation to the database, analyze the smaller result in Python."
+)
+
+try:
+    loans_df_display = pd.read_csv("loans.csv")
     conn = sqlite3.connect(":memory:")
-    loans_df.to_sql("loans", conn, index=False)
+    loans_df_display.to_sql("loans", conn, index=False)
 
     with st.expander("View the SQL aggregation query"):
         st.code(VINTAGE_AGGREGATION_SQL, language="sql")
         agg_preview = pd.read_sql(VINTAGE_AGGREGATION_SQL, conn)
-        st.caption(f"Aggregates {len(loans_df):,} raw loan rows down to {len(agg_preview)} cohort-level rows.")
-        st.dataframe(agg_preview, use_container_width=True)
+        st.caption(f"Aggregates {len(loans_df_display):,} raw loan rows down to {len(agg_preview)} cohort-level rows.")
 
-    product = st.selectbox("Product", list(PRODUCTS.keys()))
-    cfg = PRODUCTS[product]
+    vintage_product = st.selectbox("Product", list(HIST_PRODUCTS.keys()), key="vintage_product_select")
+    cfg = HIST_PRODUCTS[vintage_product]
+    derived_curve = derive_with_loan_detail(loans_df_display, vintage_product)
 
-    derived = derive_with_loan_detail(loans_df, product)
-
-    st.subheader(f"Derived Default Curve — {product}")
-    st.caption(
-        "Solid line: empirically derived from the data, correctly restricted at each month to only cohorts "
-        "old enough to have been observed that far (avoids the classic mistake of blending immature and mature cohorts). "
-        "Dashed line: the known 'true' curve this synthetic data was generated from — shown here only to validate "
-        "the derivation method actually recovers the right answer; real historical data wouldn't have this comparison available."
-    )
-
-    fig_derived = go.Figure()
-    fig_derived.add_trace(go.Scatter(x=derived["months_on_book"], y=derived["cumulative_default_pct"],
-                                      name="Derived from data", line=dict(color="#DC2626", width=3)))
-    true_curve_vals = true_cumulative_default_pct(
-        derived["months_on_book"].values, cfg["true_days_to_default"] / 30.0, cfg["true_total_default_rate_pct"]
-    )
-    fig_derived.add_trace(go.Scatter(x=derived["months_on_book"], y=true_curve_vals,
+    fig_vintage = go.Figure()
+    fig_vintage.add_trace(go.Scatter(x=derived_curve["months_on_book"], y=derived_curve["cumulative_default_pct"],
+                                      name="Derived from data", line=dict(color=RED, width=3)))
+    true_vals = true_cumulative_default_pct(derived_curve["months_on_book"].values,
+                                             cfg["true_days_to_default"] / 30.0, cfg["true_total_default_rate_pct"])
+    fig_vintage.add_trace(go.Scatter(x=derived_curve["months_on_book"], y=true_vals,
                                       name="True generating curve (validation only)",
                                       line=dict(color="#94A3B8", width=2, dash="dash")))
-    fig_derived.update_layout(xaxis_title="Months on book", yaxis_title="Cumulative default %", yaxis_ticksuffix="%",
+    fig_vintage.update_layout(xaxis_title="Months on book", yaxis_title="Cumulative default %", yaxis_ticksuffix="%",
                                height=350, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.15))
-    st.plotly_chart(fig_derived, use_container_width=True)
-
+    st.plotly_chart(fig_vintage, use_container_width=True)
     st.caption(
-        "Notice the derived curve gets noisier at higher months-on-book — fewer cohorts have matured that far yet, "
-        "so there's less data behind those points. That's a real, honest feature of vintage analysis, not a bug."
+        "The derived curve gets noisier at higher months-on-book — fewer cohorts have matured that far yet. "
+        "That's a real, honest feature of vintage analysis with immature data, not a bug. Toggle "
+        "'Overlay default curve derived from historical data' above to feed this into the forecast directly."
     )
-
-    # Feed the DERIVED curve (not an assumption) into the same rollup mechanism.
-    derived_total_rate = derived["cumulative_default_pct"].iloc[-1]
-    # Fit an approximate midpoint from the derived curve for the rollup's
-    # forward-looking projection beyond what's been observed so far.
-    derived_midpoint = cfg["true_days_to_default"] / 30.0  # using known generation params for the demo's forward projection
-
-    st.subheader("Portfolio Rollup (using the derived curve)")
-    monthly_originations_for_product = int(np.mean([
-        cfg["monthly_originations_base"] + cfg["monthly_growth"] * m for m in range(1, 25)
-    ]))
-    render_portfolio_section(monthly_originations_for_product, cfg["avg_loan_size"], cfg["annual_rate_pct"],
-                              24, derived_midpoint, derived_total_rate)
+except FileNotFoundError:
+    st.error("loans.csv not found — run `python3 generate_loan_data.py` first.")
 
 st.divider()
-st.subheader("What this is — and isn't — modeling")
+st.markdown("#### What this is — and isn't — modeling")
 st.markdown("""
-**A proof of concept built to show the mechanism is real and fast to reason about — not a finished credit risk model.**
-
-- **One flat curve per product.** A real build would let curves vary further by channel, geography, or credit tier within a product.
-- **No recovery rate.** Defaulted balance is written off in full here; real portfolios typically recover some % of defaulted principal over time.
-- **No amortization schedule.** Outstanding balance is calculated off original principal, not a real payment schedule.
-- **The historical-data mode uses synthetic data** with a known true curve, specifically so the derivation method itself could be validated — the same underlying mechanism would run identically against real loan-level history.
+- **CLAB shrinks only from defaults here, not a separate paydown/amortization mechanic.** Real CLAB also shrinks from normal loan repayment — flagged, not modeled, to keep this POC focused on the funnel-to-balance mechanism and the vintage-curve overlay specifically.
+- **Originations = Applications × Approval Rate × Avg Loan Size directly** — no separate "approved but didn't take the loan" step modeled.
+- **The historical data is synthetic**, with a known true curve baked in specifically so the derivation method could be validated against a ground truth — the same mechanism would run identically against real loan-level history.
+- **Revenue = Ending CLAB × monthly yield** — a simplification of average daily balance methodology real yield calculations often use.
 """)
