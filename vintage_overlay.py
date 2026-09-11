@@ -19,7 +19,7 @@ def fit_overlay(overlay):
     return result
 
 
-def render_overlay(all_inputs):
+def render_overlay(all_inputs, share=0.8, current_risks=None):
     st.subheader('Vintage overlay')
     st.caption('Default-rate assumption → generated loans → censored triangle → derived curve → fitted forecast curve → day-one PLL. Synthetic experiment based on your updated vintage app.')
     with st.form('overlay_experiment'):
@@ -37,8 +37,8 @@ def render_overlay(all_inputs):
         st.info('Generate curves to preview their impact. This does not change the forecast until you apply a mapping below.')
         return
     st.caption('Last generated assumptions: ' + ' · '.join(f'{p} {r:.1f}%' for p,r in experiment['rates'].items()))
-    st.write('Map these illustrative source curves to forecast products. This is a scenario mapping, not a claim that the brands correspond to these loan types.')
-    mapping = {p: st.selectbox(f'Source curve for {p}', ['Choose source']+list(PRODUCTS), key='overlay_map_'+p) for p in all_inputs}
+    st.write('CreditFresh curves apply to both CreditFresh loan types; MoneyKey curves apply to both MoneyKey loan types.')
+    mapping={p:p for p in PRODUCTS}
     fig = go.Figure()
     for source, fit in experiment['fits'].items():
         rows = experiment['overlay'].query('product == @source')
@@ -48,19 +48,19 @@ def render_overlay(all_inputs):
     st.plotly_chart(fig,width='stretch')
     st.caption('The forecast uses the dotted fitted approximation (fixed curve shape), not the raw points. Fit uses equal MOB weights; product stress is applied afterward. Excel receives the same fitted parameters. Different source and forecast terms can change realized lifetime losses.')
     ready = all(v != 'Choose source' for v in mapping.values())
-    candidate = {}
-    if ready:
-        impacts=[]
-        for product, source in mapping.items():
-            fit=experiment['fits'][source]
-            candidate[product]=fit
-            base=dict(all_inputs[product])
-            after=dict(base, midpoint_months=fit['midpoint_months'],total_default_rate_pct=fit['total_default_rate_pct']*(1+st.session_state[f'driver_{product}_stress']/100))
-            before_df=forecast_clab_v2(**base); after_df=forecast_clab_v2(**after)
-            impacts.append({'Forecast product':product,'Source':source,'Fitted PD %':fit['total_default_rate_pct'],'Midpoint MOB':fit['midpoint_months'],'Current PLL $':before_df.new_provisions.sum(),'Preview PLL $':after_df.new_provisions.sum(),'Revenue change $':after_df.revenue.sum()-before_df.revenue.sum()})
-        st.dataframe(pd.DataFrame(impacts),hide_index=True,width='stretch')
+    candidate = experiment['fits']
+    from product_forecast import segment_forecasts, combine, default_product_curves
+    before=segment_forecasts(all_inputs,share,current_risks or default_product_curves())
+    stress=st.session_state.get("driver_product_stress",0.0)
+    effective={b:{**v,"total_default_rate_pct":min(99.0,v["total_default_rate_pct"]*(1+stress/100))} for b,v in candidate.items()}
+    after=segment_forecasts(all_inputs,share,effective)
+    impacts=[]
+    for brand in PRODUCTS:
+        old=combine(before[brand].values()); new=combine(after[brand].values())
+        impacts.append({'Product':brand,'Fitted PD %':candidate[brand]['total_default_rate_pct'],'Current PLL $':old.new_provisions.sum(),'Preview PLL $':new.new_provisions.sum(),'Revenue change $':new.revenue.sum()-old.revenue.sum()})
+    st.dataframe(pd.DataFrame(impacts),hide_index=True,width='stretch')
     if st.button('Apply overlay to forecast',disabled=not ready,type='primary'):
-        st.session_state['applied_overlay']={'fits':candidate,'mapping':mapping.copy(),'rates':experiment['rates'].copy()}
+        st.session_state['applied_overlay']={'product_fits':candidate,'mapping':mapping.copy(),'rates':experiment['rates'].copy()}
         st.session_state['driver_source']='Historical vintage'
         st.rerun()
     applied=st.session_state.get('applied_overlay')

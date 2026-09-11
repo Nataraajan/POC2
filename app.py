@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from excel_export import export_model
+from product_forecast import default_product_curves, segment_forecasts, combine
 from vintage_overlay import render_overlay
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
@@ -93,6 +94,7 @@ def preset(name):
             "Upside": -20.0,
             "Downside": 20.0,
         }[name]
+    st.session_state["driver_product_stress"] = {"Base":0.0,"Upside":-20.0,"Downside":20.0}[name]
     st.session_state["scenario"] = name
 
 
@@ -211,8 +213,7 @@ def table(frame):
 
 initialize()
 row_count, triangle, fits = load_vintage_data()
-if st.session_state.get("applied_overlay"):
-    fits = st.session_state["applied_overlay"]["fits"]
+
 with st.sidebar:
     st.markdown(
         '<div class="brand"><span>✦</span> LendSight</div>', unsafe_allow_html=True
@@ -257,7 +258,27 @@ selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
 st.session_state.setdefault("driver_creditfresh_mix", 80.0)
 mix_left, mix_right = st.columns([1, 3])
 cf_mix = mix_left.number_input("CreditFresh share (%)", 0.0, 100.0, step=1.0, key="driver_creditfresh_mix", on_change=custom) / 100
-mix_right.caption(f"MoneyKey share: {1-cf_mix:.0%}. Editable product allocation applies to opening CLAB and originations within each loan type. Both products contain Short-Term and Installment loans; pricing, approval and credit curves are currently shared by loan type.")
+mix_right.caption(f"MoneyKey share: {1-cf_mix:.0%}. Editable product allocation applies to opening CLAB and originations within each loan type. Both products contain both loan types. Volume is allocated before applying each product’s own risk curve; pricing and approval remain loan-type assumptions.")
+product_fits = default_product_curves()
+if st.session_state.get("applied_overlay", {}).get("product_fits"):
+    product_fits = st.session_state["applied_overlay"]["product_fits"]
+with st.expander("Product credit assumptions", expanded=True):
+    st.session_state.setdefault("driver_product_stress",0.0)
+    product_stress=st.number_input("Product default-rate stress (%)",-100.0,100.0,key="driver_product_stress",on_change=custom)
+    product_fits={b:{**v,"total_default_rate_pct":min(99.0,v["total_default_rate_pct"]*(1+product_stress/100))} for b,v in product_fits.items()}
+    risk_cols=st.columns(2)
+    product_risks={}
+    manual_product_risks={}
+    for risk_col, brand, default_pd in zip(risk_cols, ["CreditFresh", "MoneyKey"], [20.0,36.0]):
+        key="driver_risk_"+brand
+        st.session_state.setdefault(key+"_pd", default_pd)
+        st.session_state.setdefault(key+"_mid", product_fits[brand]["midpoint_months"])
+        risk_col.number_input(brand+" lifetime default (%)",0.0,99.0,key=key+"_pd",disabled=historical,on_change=custom)
+        risk_col.number_input(brand+" midpoint (MOB)",0.1,24.0,key=key+"_mid",disabled=historical,on_change=custom)
+        manual_product_risks[brand]={"total_default_rate_pct":min(99.0,st.session_state[key+"_pd"]*(1+product_stress/100)),"midpoint_months":st.session_state[key+"_mid"]}
+        product_risks[brand]=product_fits[brand] if historical else manual_product_risks[brand]
+        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; midpoint {product_risks[brand]['midpoint_months']:.2f} MOB. PD capped at 99% after stress.")
+    st.caption("Product curves apply to both loan types before losses and revenue are computed. Manual defaults 20% / 36% are illustrative generator assumptions. Historical mode uses the separate product vintage fits. LGD 100%, no recoveries.")
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
     with st.container(border=True, key="driver_panel"):
@@ -309,25 +330,8 @@ if section == "Forecasting":
                 key="driver_source",
             )
             historical = mode == "Historical vintage"
-            number(st, "Default-rate stress (%)", "stress", -100.0, 100.0, 5.0)
-            with st.expander("Manual curve assumptions"):
-                st.number_input(
-                    "Lifetime default rate (%)",
-                    0.0,
-                    50.0,
-                    step=1.0,
-                    key=p + "rate",
-                    disabled=historical,
-                    on_change=custom,
-                )
-                st.number_input(
-                    "Days to default",
-                    1,
-                    365,
-                    key=p + "days",
-                    disabled=historical,
-                    on_change=custom,
-                )
+            st.caption("Product risk and stress are controlled above.")
+            st.caption("Default probability and timing are set by product in Product credit assumptions above.")
         with cols[4]:
             st.markdown("**▧ Opening Portfolio**")
             st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
@@ -360,15 +364,14 @@ if section == "Forecasting":
             )
 
 all_inputs = {product: args(product, historical) for product in PRODUCT_DEFAULTS}
-forecasts = {product: forecast_clab_v2(**a) for product, a in all_inputs.items()}
-df = sum((forecasts[product].drop(columns="month") for product in selected))
-df.insert(0, "month", np.arange(1, horizon + 1))
+segments = segment_forecasts(all_inputs, cf_mix, product_risks)
+forecasts = {kind: combine(segments[brand][kind] for brand in segments) for kind in all_inputs}
+brand_forecasts = {brand: combine(parts[kind] for kind in selected) for brand, parts in segments.items()}
+df = combine(brand_forecasts.values())
 current = df.iloc[focus - 1]
-manual_forecasts = {
-    product: forecast_clab_v2(**args(product, False)) for product in selected
-}
-manual_revenue = sum(f.revenue.sum() for f in manual_forecasts.values())
-manual_provision = sum(f.new_provisions.sum() for f in manual_forecasts.values())
+manual_segments = segment_forecasts(all_inputs, cf_mix, manual_product_risks)
+manual_revenue = sum(manual_segments[b][k].revenue.sum() for b in manual_segments for k in selected)
+manual_provision = sum(manual_segments[b][k].new_provisions.sum() for b in manual_segments for k in selected)
 st.success(
     f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
 )
@@ -464,44 +467,10 @@ if section == "Forecasting":
     with right, st.container(border=True, key="curve_panel"):
         st.subheader("Default Curve Overlay")
         fig = go.Figure()
-        for product in selected:
-            hist = triangle[triangle["product"] == product]
-            for i, (_, cohort) in enumerate(hist.groupby("origination_month")):
-                fig.add_trace(
-                    go.Scatter(
-                        x=cohort.months_on_book,
-                        y=cohort.cum_default_pct,
-                        mode="lines",
-                        line=dict(color="rgba(224,147,147,.20)", width=1),
-                        name="Original history (reference only)",
-                        showlegend=i == 0 and product == selected[0],
-                        hoverinfo="skip",
-                    )
-                )
-            ages = np.arange(max(all_inputs[product]["term_months"], 24) + 1)
-            for hist_mode, name, color, dash in [
-                (True, "Historical fitted", "#172468", "solid"),
-                (False, "Manual", "#348ad2", "dash"),
-            ]:
-                a = args(product, hist_mode)
-                fig.add_trace(
-                    go.Scatter(
-                        x=ages,
-                        y=cumulative_default_pct(
-                            ages, a["midpoint_months"], a["total_default_rate_pct"]
-                        ),
-                        hovertemplate=(f"<b>{product} · {name}</b><br>" + ("APPLIED" if hist_mode == historical else "Comparison only") + "<br>MOB %{x:.0f}<br>Cumulative default: %{y:.2f}%<extra></extra>"),
-                        name=f"{product} · {name}"
-                        + (
-                            " — APPLIED" if hist_mode == historical else " — comparison"
-                        ),
-                        line=dict(
-                            color=color,
-                            width=4 if hist_mode == historical else 1.5,
-                            dash="solid" if hist_mode == historical else "dot",
-                        ),
-                    )
-                )
+        for brand, color in [("CreditFresh", "#172468"), ("MoneyKey", "#348ad2")]:
+            ages=np.arange(max(horizon,24)+1)
+            for applied, curve in [(True,product_risks[brand]),(False,manual_product_risks[brand] if historical else product_fits[brand])]:
+                fig.add_scatter(x=ages,y=cumulative_default_pct(ages,curve["midpoint_months"],curve["total_default_rate_pct"]),name=brand+(" — APPLIED" if applied else " — comparison"),line=dict(color=color,width=3 if applied else 1,dash="solid" if applied else "dot"),hovertemplate=brand+"<br>MOB %{x}<br>Default %{y:.2f}%<extra></extra>")
         chart(fig, "Cumulative default %")
         fig.update_xaxes(title="Months on book (MOB)", dtick=3)
         fig.update_layout(height=380, hovermode="closest", hoverlabel=dict(namelength=-1, bgcolor="white", font_size=12), margin=dict(l=15,r=15,t=15,b=120), legend=dict(orientation="h", y=-.3, yanchor="top", x=0))
@@ -509,13 +478,10 @@ if section == "Forecasting":
         st.plotly_chart(fig, width="stretch")
         st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
         st.caption(
-            (f"Applied: mapped 100,000-loan experiment + product stress. Faint vintages are original history for reference." if historical and st.session_state.get("applied_overlay") else f"Applied: {mode} + product stress · {row_count:,} synthetic historical records · Original-loan-amount-weighted default curve")
+            f"Applied: {mode} · separate CreditFresh and MoneyKey curves · synthetic product history; product PD includes stress."
         )
-        for product in selected:
-            a = all_inputs[product]
-            st.caption(
-                f"{product}: applied lifetime default {a['total_default_rate_pct']:.2f}%; midpoint {a['midpoint_months']:.2f} MOB (including stress)."
-            )
+        for brand, risk in product_risks.items():
+            st.caption(f"{brand}: applied lifetime PD {risk['total_default_rate_pct']:.2f}%; midpoint {risk['midpoint_months']:.2f} MOB.")
         st.button(
             "Apply historical curve",
             on_click=apply_historical,
@@ -562,7 +528,7 @@ if section in ("Forecasting", "Monthly schedule"):
             st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
             st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
         for product, share in [("CreditFresh", cf_mix), ("MoneyKey", 1-cf_mix)]:
-            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", df.revenue * share)
+            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", brand_forecasts[product].revenue)
         horizontal = summary.set_index("month").rename(columns=LABELS).T
         horizontal.columns = [f"Month {m}" for m in summary.month]
         horizontal.index.name = "Metric"
@@ -574,6 +540,9 @@ if section in ("Forecasting", "Monthly schedule"):
         download, details = st.columns([1, 4])
         snapshot = {
             "creditfresh_share": cf_mix,
+            "brand_risks": product_risks,
+            "manual_brand_risks": manual_product_risks,
+            "historical_brand_risks": product_fits,
             "source": mode,
             "scenario": st.session_state.get("scenario", "Base"),
             "view": view,
@@ -640,7 +609,7 @@ if section == "Vintage analysis":
         st.button("Preview this live curve in forecast overlay", on_click=preview_live_overlay, type="primary")
     st.caption("Precomputed results remain separate from forecast assumptions. Use a live run and preview its product mapping before applying it to the forecast.")
 if section == "Vintage overlay":
-    render_overlay(all_inputs)
+    render_overlay(all_inputs, cf_mix, product_risks)
 
 if section == "Model assumptions":
     st.markdown(

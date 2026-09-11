@@ -52,6 +52,13 @@ def input_cells(snapshot):
         "E8": snapshot["scenario"],
         "E9": {"Combined": 1, "Short-Term": 2, "Installment": 3}[snapshot["view"]],
     }
+    if snapshot.get("brand_risks"):
+        for brand, c in [("CreditFresh","E"),("MoneyKey","F")]:
+            active=snapshot["brand_risks"][brand]
+            manual=snapshot.get("manual_brand_risks",snapshot["brand_risks"])[brand]
+            historical=snapshot.get("historical_brand_risks",snapshot["brand_risks"])[brand]
+            for r,v in [(52,manual["total_default_rate_pct"]/100),(53,manual["midpoint_months"]),(54,historical["total_default_rate_pct"]/100),(55,historical["midpoint_months"]),(56,0)]:
+                out[f"{c}{r}"]=v
     for p, c in [("Short-Term", "E"), ("Installment", "F")]:
         item = inputs[p]
         a = item["active"]
@@ -72,7 +79,7 @@ def input_cells(snapshot):
             24: item["stress_pct"] / 100,
             27: 0.55,
         }
-        out.update({f"{c}{r}": v for r, v in values.items()})
+        out.update({f"{c}{r}": v for r, v in values.items() if r not in range(20,27)})
         out.update({f"{c}{34+m}": v for m, v in enumerate(a["seasonality_pattern"])})
     return out
 
@@ -80,11 +87,30 @@ def input_cells(snapshot):
 def cached_schedules(snapshot):
     """Opening preview values match the app; formulas remain the authority in Excel."""
     builds = {}
+    segment_caches = {}
+    if snapshot.get("brand_risks"):
+        from product_forecast import segment_forecasts, combine
+        inputs={p:{**item["active"],"horizon_months":36} for p,item in snapshot["products"].items()}
+        segments=segment_forecasts(inputs,snapshot.get("creditfresh_share",.8),snapshot["brand_risks"])
+        opening_segments=segment_forecasts({p:{**a,"monthly_applications_base":0} for p,a in inputs.items()},snapshot.get("creditfresh_share",.8),snapshot["brand_risks"])
+        for brand,weight,offset in [("CreditFresh",snapshot.get("creditfresh_share",.8),2),("MoneyKey",1-snapshot.get("creditfresh_share",.8),4)]:
+            sub={**snapshot,"products":{}}
+            sub.pop("brand_risks",None)
+            for p,item in snapshot["products"].items():
+                base=item["active"]
+                sub["products"][p]={**item,"active":{**base,"monthly_applications_base":base["monthly_applications_base"]*weight,"opening_gross_clab":base["opening_gross_clab"]*weight,**snapshot["brand_risks"][brand]}}
+                sub["products"][p]["active"].pop("days_to_default",None)
+            cache=cached_schedules(sub)
+            segment_caches[3+offset]=cache[3];segment_caches[4+offset]=cache[4]
+
     horizon = next(iter(snapshot["products"].values()))["active"]["horizon_months"]
     for product, item in snapshot["products"].items():
         args = {**item["active"], "horizon_months": 36}
         f = forecast_clab_v2(**args)
         opening = forecast_clab_v2(**{**args, "monthly_applications_base": 0})
+        if snapshot.get("brand_risks"):
+            f=combine(segments[b][product] for b in segments)
+            opening=combine(opening_segments[b][product] for b in segments)
         rows = {r: f[name].to_numpy() for r, name in ROWS.items()}
         rows.update(
             {
@@ -120,8 +146,14 @@ def cached_schedules(snapshot):
     share = snapshot.get("creditfresh_share", 0.8)
     short = builds["Short-Term"][24] if "Short-Term" in selected else np.zeros(36)
     installment = builds["Installment"][24] if "Installment" in selected else np.zeros(36)
-    combined.update({47:short*share, 48:installment*share, 49:(short+installment)*share,
-                     50:short*(1-share), 51:installment*(1-share), 52:(short+installment)*(1-share), 53:short+installment})
+    if snapshot.get("brand_risks"):
+        cfshort=segments["CreditFresh"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
+        cfins=segments["CreditFresh"]["Installment"].revenue.to_numpy() if "Installment" in selected else np.zeros(36)
+        mkshort=segments["MoneyKey"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
+        mkins=segments["MoneyKey"]["Installment"].revenue.to_numpy() if "Installment" in selected else np.zeros(36)
+    else:
+        cfshort,cfins,mkshort,mkins=short*share,installment*share,short*(1-share),installment*(1-share)
+    combined.update({47:cfshort,48:cfins,49:cfshort+cfins,50:mkshort,51:mkins,52:mkshort+mkins,53:short+installment})
     result = {}
     for sheet, rows in [
         (1, combined),
@@ -147,6 +179,7 @@ def cached_schedules(snapshot):
             )
         cells["E3"] = snapshot["scenario"]
         result[sheet] = cells
+    result.update(segment_caches)
     return result
 
 

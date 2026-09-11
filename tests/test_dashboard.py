@@ -127,14 +127,14 @@ def test_product_persistence_and_combined_totals():
 
 def test_historical_switch_and_restore():
     at = app()
-    at.number_input(key="driver_Short-Term_rate").set_value(20.0).run()
+    at.number_input(key="driver_risk_CreditFresh_pd").set_value(20.0).run()
     manual = full(at).copy()
     next(b for b in at.button if b.label == "Apply historical curve").click().run()
     assert at.selectbox(key="driver_source").value == "Historical vintage"
     assert not np.allclose(full(at).Revenue, manual.Revenue)
     at.selectbox(key="driver_source").set_value("Manual assumptions").run()
     pd.testing.assert_frame_equal(full(at), manual)
-    assert at.number_input(key="driver_Short-Term_rate").value == 20.0
+    assert at.number_input(key="driver_risk_CreditFresh_pd").value == 20.0
 
 
 def test_growth_scenarios_reset_and_partial_quarter():
@@ -238,8 +238,6 @@ def test_vintage_experiment_applies_to_forecast():
     next(n for n in at.number_input if n.label == "CreditFresh lifetime default (%)").set_value(35.0)
     next(b for b in at.button if b.label == "Generate vintage curves").click().run(timeout=60)
     assert not at.exception
-    at.selectbox(key="overlay_map_Short-Term").set_value("CreditFresh").run()
-    at.selectbox(key="overlay_map_Installment").set_value("MoneyKey").run()
     next(b for b in at.button if b.label == "Apply overlay to forecast").click().run()
     assert not at.exception
     at.radio(key="navigation").set_value("Forecasting").run()
@@ -251,9 +249,13 @@ def test_editable_brand_mix():
     at = app()
     total = full(at).Revenue.copy()
     schedule = at.dataframe[0].value
-    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"], schedule.loc["Revenue"]*.8)
+    pll = full(at)["Provision expense"].sum()
     at.number_input(key="driver_creditfresh_mix").set_value(65.0).run()
     schedule = at.dataframe[0].value
-    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"], schedule.loc["Revenue"]*.65)
-    np.testing.assert_allclose(schedule.loc["MoneyKey revenue"], schedule.loc["Revenue"]*.35)
-    np.testing.assert_allclose(full(at).Revenue, total)
+    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"]+schedule.loc["MoneyKey revenue"],schedule.loc["Revenue"])
+    assert not np.allclose(full(at).Revenue, total)
+    assert full(at)["Provision expense"].sum() > pll
+    at.number_input(key="driver_creditfresh_mix").set_value(100.0).run()
+    np.testing.assert_allclose(at.dataframe[0].value.loc["MoneyKey revenue"], 0)
+    at.number_input(key="driver_creditfresh_mix").set_value(0.0).run()
+    np.testing.assert_allclose(at.dataframe[0].value.loc["CreditFresh revenue"], 0)
