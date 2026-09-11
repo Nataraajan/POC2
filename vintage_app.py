@@ -187,8 +187,7 @@ st.code(tri_stats["sql_queries"]["originations_by_vintage"], language="sql")
 heading("3 · Output — the derived curve", level=4)
 st.markdown(
     "For each month-on-book, pool the defaulted dollars across **only** the vintages that have reached it, divide by "
-    "those vintages' originations, then accumulate. The result is `overlay_curve.csv` — the only file the forecast "
-    "model imports. Plotted in the curve chart below."
+    "those vintages' originations, then accumulate. The result is `overlay_curve.csv` — a small derived output. The integrated Vintage overlay page fits and explicitly maps these curves into forecast parameters. Plotted in the curve chart below."
 )
 curve_table = overlay_df.pivot(index="mob", columns="product", values="cum_default")[list(PRODUCT_COLORS)]
 curve_table.index = [f"MOB {mob}" for mob in curve_table.index]

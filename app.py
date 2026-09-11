@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from excel_export import export_model
+from vintage_overlay import render_overlay
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
     cumulative_default_pct,
@@ -70,6 +71,7 @@ div[data-testid="stVerticalBlockBorderWrapper"],div[data-testid="stLayoutWrapper
 
 
 def reset():
+    st.session_state.pop("applied_overlay", None)
     for key in list(st.session_state):
         if key.startswith("driver_"):
             del st.session_state[key]
@@ -209,13 +211,15 @@ def table(frame):
 
 initialize()
 row_count, triangle, fits = load_vintage_data()
+if st.session_state.get("applied_overlay"):
+    fits = st.session_state["applied_overlay"]["fits"]
 with st.sidebar:
     st.markdown(
         '<div class="brand"><span>✦</span> LendSight</div>', unsafe_allow_html=True
     )
     section = st.radio(
         "Navigation",
-        ["Forecasting", "Monthly schedule", "Vintage analysis", "Model assumptions"],
+        ["Forecasting", "Monthly schedule", "Vintage overlay", "Vintage analysis", "Model assumptions"],
         key="navigation",
         label_visibility="collapsed",
     )
@@ -366,6 +370,8 @@ manual_provision = sum(f.new_provisions.sum() for f in manual_forecasts.values()
 st.success(
     f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
 )
+if historical and st.session_state.get("applied_overlay"):
+    st.info("Applied vintage experiment: " + " · ".join(f"{p} ← {v}" for p,v in st.session_state["applied_overlay"]["mapping"].items()))
 if historical:
     st.caption(
         f"Historical vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
@@ -459,7 +465,7 @@ if section == "Forecasting":
                         y=cohort.cum_default_pct,
                         mode="lines",
                         line=dict(color="rgba(224,147,147,.20)", width=1),
-                        name="Individual vintages",
+                        name="Original history (reference only)",
                         showlegend=i == 0 and product == selected[0],
                         hoverinfo="skip",
                     )
@@ -495,7 +501,7 @@ if section == "Forecasting":
         st.plotly_chart(fig, width="stretch")
         st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
         st.caption(
-            f"Applied: {mode} + product stress · {row_count:,} synthetic historical records · Original-loan-amount-weighted default curve"
+            (f"Applied: mapped 100,000-loan experiment + product stress. Faint vintages are original history for reference." if historical and st.session_state.get("applied_overlay") else f"Applied: {mode} + product stress · {row_count:,} synthetic historical records · Original-loan-amount-weighted default curve")
         )
         for product in selected:
             a = all_inputs[product]
@@ -543,6 +549,10 @@ if section in ("Forecasting", "Monthly schedule"):
             )
             * 100,
         )
+        st.caption("Approval is application-weighted across the selected portfolio. " + " · ".join(f"{p}: {all_inputs[p]['approval_rate_pct']:.1f}%" for p in selected) + ". Driver inputs edit one product at a time.")
+        with st.expander("How reserve and charge-offs reconcile"):
+            st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
+            st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
         horizontal = summary.set_index("month").rename(columns=LABELS).T
         horizontal.columns = [f"Month {m}" for m in summary.month]
         horizontal.index.name = "Metric"
@@ -633,6 +643,9 @@ if section == "Vintage analysis":
         st.caption(
             "Blank cells are unobserved ages. The separate CreditFresh / MoneyKey 2M-row pipeline remains in vintage_app.py; it is not the source for these forecast products."
         )
+if section == "Vintage overlay":
+    render_overlay(all_inputs)
+
 if section == "Model assumptions":
     st.markdown(
         '<h3 id="model-assumptions">Model Assumptions</h3>', unsafe_allow_html=True

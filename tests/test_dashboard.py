@@ -205,3 +205,19 @@ def test_horizontal_schedule_reconciles():
     assert list(schedule.columns) == [f"Month {m}" for m in range(1, 25)]
     np.testing.assert_allclose(schedule.loc["Revenue"].to_numpy()*1e6, full(at).Revenue)
     np.testing.assert_allclose(schedule.loc["Applications"].to_numpy(), full(at).Applications)
+
+
+def test_vintage_experiment_applies_to_forecast():
+    at = app()
+    before = full(at).copy()
+    at.radio(key="navigation").set_value("Vintage overlay").run()
+    at.slider[0].set_value(35.0)
+    next(b for b in at.button if b.label == "Generate vintage curves").click().run(timeout=60)
+    assert not at.exception
+    at.selectbox(key="overlay_map_Short-Term").set_value("CreditFresh").run()
+    at.selectbox(key="overlay_map_Installment").set_value("MoneyKey").run()
+    next(b for b in at.button if b.label == "Apply overlay to forecast").click().run()
+    assert not at.exception
+    at.radio(key="navigation").set_value("Forecasting").run()
+    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    assert not np.allclose(before["Provision expense"], full(at)["Provision expense"])

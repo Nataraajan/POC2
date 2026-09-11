@@ -1,6 +1,6 @@
 # Validation — 11 September 2026
 
-**18 tests passed** after the opening-portfolio, navigation and Excel revision.
+**19 tests passed** after the opening-portfolio, navigation and Excel revision.
 
 - Original empty-book forecast matches a fixture captured from commit 0c82eb7.
 - Opening cohorts at MOB 0, MOB 3 and an even age mix repay fully and exhaust
@@ -39,3 +39,5 @@ Plotly 7.0.0, PyArrow 25.0.1, pytest 9.1.1.
 Annual KPI checks verify 12-month originations totals and suppress partial-year results. Browser review confirmed separated KPI cards and curve legend below the plot. Curve hover labels explicitly name product, source, applied/comparison status, MOB and percentage. Forecast engine and Excel formulas are unchanged by this presentation update.
 
 Executive KPI presentation preserves annual totals and shows PLL/revenue against the user-supplied benchmark. Horizontal schedule revenue and application rows reconcile to the underlying forecast. Cards and horizontal month headers visually checked in-browser.
+
+New integration test generates a changed vintage assumption, maps both source products, applies the fit and verifies forecast PLL changes. Existing 18 tests passed before the added integration test, which also passed.
