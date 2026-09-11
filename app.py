@@ -231,7 +231,7 @@ mode = st.session_state["driver_source"]
 historical = mode == "Historical vintage"
 
 st.markdown(
-    '<h1 id="forecasting">CLAB Forecast — Driver-Based Revenue Model</h1>',
+    '<h1 id="forecasting">Driver-Based Revenue Model</h1>',
     unsafe_allow_html=True,
 )
 st.caption("Applications → Originations → CLAB → Charge-offs → Revenue")
@@ -326,14 +326,12 @@ if section == "Forecasting":
                 )
         with cols[4]:
             st.markdown("**▧ Opening Portfolio**")
-            number(
-                st,
-                "Opening gross CLAB ($)",
-                "opening",
-                0.0,
-                1_000_000_000.0,
-                1_000_000.0,
-            )
+            st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
+            def update_opening():
+                st.session_state[p + "opening"] = st.session_state[p + "opening_m"] * 1_000_000
+                custom()
+            st.number_input("Opening gross CLAB ($M)", 0.0, 1000.0, step=1.0,
+                            format="%.2f", key=p + "opening_m", on_change=update_opening)
             st.selectbox(
                 "Opening age mix",
                 ["Even balance by MOB (assumed)", "Single cohort at specified MOB"],
@@ -408,7 +406,13 @@ if section == "Forecasting":
             footer = f"Year 2 vs Year 1: {change}" + (" · closing balance" if balance else " · annual total")
         else:
             footer = "Extend horizon to 24 months for annual comparison"
-        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-years">{"".join(values)}</div><div class="kpi-footer">{footer}</div></div>')
+        series = df[field].to_numpy(dtype=float)
+        low, high = min(0.0, float(series.min())), max(0.0, float(series.max()))
+        span = high-low or 1.0
+        points = " ".join(f"{i*300/max(len(series)-1,1):.1f},{64-(v-low)/span*56:.1f}" for i,v in enumerate(series))
+        color = "#7dd3fc" if tint == "hero" else "#dc4561" if tint == "red" else "#15966b" if tint == "green" else "#4675bd"
+        spark = f'<svg viewBox="0 0 300 72" width="100%" height="72" role="img" aria-label="{label} monthly trend"><line x1="0" y1="{64-low*-56/span:.1f}" x2="300" y2="{64-low*-56/span:.1f}" stroke="{color}" opacity="0.2"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round"/></svg><div class="kpi-note">Monthly trend · M1 {_fmt_dollar_scaled(series[0])} → M{len(series)} {_fmt_dollar_scaled(series[-1])}</div>'
+        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-years">{"".join(values)}</div>{spark}<div class="kpi-footer">{footer}</div></div>')
     st.markdown('<div class="kpi-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
     st.caption("Year 1 = forecast months 1–12; Year 2 = months 13–24. Balances are year-end snapshots; all other KPIs are annual totals.")
 

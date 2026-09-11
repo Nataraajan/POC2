@@ -148,7 +148,7 @@ def test_growth_scenarios_reset_and_partial_quarter():
     np.testing.assert_allclose(full(at).Revenue.sum(), f.Revenue.iloc[:24].sum())
     next(b for b in at.button if b.label == "Reset").click().run()
     assert at.number_input(key="driver_horizon").value == 24
-    assert at.number_input(key="driver_Short-Term_opening").value == 255600000.0
+    assert at.number_input(key="driver_Short-Term_opening_m").value == 255.6
 
 
 def test_term_one_and_single_age():
@@ -205,6 +205,14 @@ def test_horizontal_schedule_reconciles():
     assert list(schedule.columns) == [f"Month {m}" for m in range(1, 25)]
     np.testing.assert_allclose(schedule.loc["Revenue"].to_numpy()*1e6, full(at).Revenue)
     np.testing.assert_allclose(schedule.loc["Applications"].to_numpy(), full(at).Applications)
+
+
+def test_opening_millions_converts_to_engine_dollars():
+    at = app()
+    at.number_input(key="driver_Short-Term_opening_m").set_value(300.0).run()
+    assert not at.exception
+    assert at.session_state["driver_Short-Term_opening"] == 300_000_000
+    assert full(at)["Opening gross CLAB"].iloc[0] == 683_400_000
 
 
 def test_vintage_experiment_applies_to_forecast():
