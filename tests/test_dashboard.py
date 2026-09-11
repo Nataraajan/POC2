@@ -215,6 +215,21 @@ def test_opening_millions_converts_to_engine_dollars():
     assert full(at)["Opening gross CLAB"].iloc[0] == 683_400_000
 
 
+def test_embedded_vintage_walkthrough_and_handoff():
+    at = app()
+    at.radio(key="navigation").set_value("Vintage analysis").run()
+    assert not at.exception
+    assert len(at.code) == 2  # displayed SQL queries
+    assert len(at.dataframe) >= 4  # validation, sample rows, curve, triangle
+    next(b for b in at.button if b.label == "Run live demo").click().run(timeout=60)
+    assert not at.exception
+    expected = at.session_state["live_demo_run"]["overlay"].copy()
+    next(b for b in at.button if b.label == "Preview this live curve in forecast overlay").click().run()
+    assert not at.exception
+    assert at.radio(key="navigation").value == "Vintage overlay"
+    pd.testing.assert_frame_equal(at.session_state["overlay_experiment_result"]["overlay"], expected)
+
+
 def test_vintage_experiment_applies_to_forecast():
     at = app()
     before = full(at).copy()

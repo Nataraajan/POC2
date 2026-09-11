@@ -619,34 +619,19 @@ if section in ("Forecasting", "Monthly schedule"):
             )
 
 if section == "Vintage analysis":
-    st.markdown(
-        '<h3 id="vintage-analysis">Vintage Analysis</h3>', unsafe_allow_html=True
-    )
-    with st.expander("Historical cohort triangle", expanded=True):
-        product = st.selectbox("Historical product", list(PRODUCT_DEFAULTS))
-        pivot = triangle[triangle["product"] == product].pivot(
-            index="origination_month",
-            columns="months_on_book",
-            values="cum_default_pct",
-        )
-        st.plotly_chart(
-            chart(
-                go.Figure(
-                    go.Heatmap(
-                        z=pivot.values,
-                        x=pivot.columns,
-                        y=pivot.index,
-                        colorscale="Blues",
-                        hoverongaps=False,
-                    )
-                ),
-                "Origination month",
-            ),
-            width="stretch",
-        )
-        st.caption(
-            "Blank cells are unobserved ages. The separate CreditFresh / MoneyKey 2M-row pipeline remains in vintage_app.py; it is not the source for these forecast products."
-        )
+    from vintage_app import render_vintage_analysis
+    render_vintage_analysis()
+    if st.session_state.get("live_demo_run"):
+        def preview_live_overlay():
+            from vintage_overlay import fit_overlay
+            live = st.session_state["live_demo_run"]
+            st.session_state["overlay_experiment_result"] = {
+                "triangle": live["triangle"], "overlay": live["overlay"],
+                "fits": fit_overlay(live["overlay"]), "rates": live["rates_pct"],
+            }
+            st.session_state["navigation"] = "Vintage overlay"
+        st.button("Preview this live curve in forecast overlay", on_click=preview_live_overlay, type="primary")
+    st.caption("Precomputed results remain separate from forecast assumptions. Use a live run and preview its product mapping before applying it to the forecast.")
 if section == "Vintage overlay":
     render_overlay(all_inputs)
 
