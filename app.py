@@ -50,7 +50,7 @@ h3{font-size:1.05rem!important;padding:0 0 .45rem!important}
 [data-testid="stCaptionContainer"] p{font-size:.78rem;color:#647694}
 .badge{display:inline-block;background:#e2f7ed;color:#04824e;border-radius:20px;padding:7px 14px;font-size:.77rem;font-weight:650}
 .note{background:#e4f8ef;color:#067c4a;padding:9px 12px;border-radius:7px;font-size:.8rem}
-.kpi{border:1px solid #e1eaf8;border-radius:10px;padding:12px;background:white;min-height:98px}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:12px 0 28px}.kpi{box-sizing:border-box;min-width:0;overflow-wrap:anywhere;border:1px solid #e1eaf8;border-radius:10px;padding:12px;background:white;min-height:98px}
 .kpi-label{font-size:.78rem;color:#30456d}.kpi-value{font-size:1.6rem;font-weight:750;color:#0a225e;margin:3px 0}
 .kpi-note{font-size:.72rem;color:#647694}.kpi.green{background:#f0fcf7;border-color:#d4f2e3}.kpi.green .kpi-value{color:#00a35b}
 .kpi.red{background:#fff6f7;border-color:#ffe0e5}.kpi.red .kpi-value{color:#e92746}
@@ -62,6 +62,7 @@ div[data-testid="stVerticalBlockBorderWrapper"],div[data-testid="stLayoutWrapper
 [data-testid="stSidebarUserContent"]{padding-top:0!important}
 .st-key-driver_panel,.st-key-revenue_panel,.st-key-curve_panel,.st-key-schedule_panel{background:white!important;border-color:#e1eaf6!important;border-radius:12px!important}
 [data-testid="stCaptionContainer"] p{color:#566a89!important}
+@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1100px){.kpi-value{font-size:1.2rem}.block-container{padding:1rem}.kpi{padding:9px}}
 </style>""",
     unsafe_allow_html=True,
@@ -249,7 +250,7 @@ toolbar[6].markdown(
     unsafe_allow_html=True,
 )
 selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
-focus = toolbar[7].number_input("KPI month", 1, horizon, 1, key=f"focus_{horizon}")
+focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
     with st.container(border=True, key="driver_panel"):
         driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
@@ -372,22 +373,28 @@ if historical:
         )
     )
 if section == "Forecasting":
-    cards = st.columns(6)
-    for col, (field, label, tint) in zip(
-        cards,
-        [
-            ("originations", "Originations", ""),
-            ("ending_gross_clab", "Gross CLAB", ""),
-            ("net_clab", "Net CLAB", ""),
-            ("charge_offs", "Charge-offs", "red"),
-            ("revenue", "Monthly Revenue", "green"),
-            ("net_revenue", "Net Revenue", "green"),
-        ],
-    ):
-        col.markdown(
-            f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-value">{_fmt_dollar_scaled(current[field])}</div><div class="kpi-note">Forecast month {focus}</div></div>',
-            unsafe_allow_html=True,
-        )
+    st.subheader("Annual forecast KPIs")
+    cards = []
+    for field, label, tint, balance in [
+        ("originations", "Originations", "", False),
+        ("ending_gross_clab", "Gross CLAB", "", True),
+        ("net_clab", "Net CLAB", "", True),
+        ("new_provisions", "PLL / provision expense", "red", False),
+        ("revenue", "Revenue", "green", False),
+        ("net_revenue", "Net Revenue", "green", False),
+    ]:
+        values = []
+        for year in (1, 2):
+            period = df[(df.month > (year-1)*12) & (df.month <= year*12)]
+            complete = len(period) == 12
+            value = _fmt_dollar_scaled(period[field].iloc[-1] if balance else period[field].sum()) if complete else "—"
+            note = "year-end" if balance else "annual total"
+            if not complete:
+                note = "requires " + str(year*12) + " forecast months"
+            values.append(f'<div class="kpi-note">Year {year} · {note}</div><div class="kpi-value">{value}</div>')
+        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div>{"".join(values)}</div>')
+    st.markdown('<div class="kpi-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
+    st.caption("Year 1 = forecast months 1–12; Year 2 = months 13–24. Balances are year-end snapshots; all other KPIs are annual totals.")
 
     left, right = st.columns([1.1, 1])
     with left, st.container(border=True, key="revenue_panel"):
@@ -459,6 +466,7 @@ if section == "Forecasting":
                         y=cumulative_default_pct(
                             ages, a["midpoint_months"], a["total_default_rate_pct"]
                         ),
+                        hovertemplate=(f"<b>{product} · {name}</b><br>" + ("APPLIED" if hist_mode == historical else "Comparison only") + "<br>MOB %{x:.0f}<br>Cumulative default: %{y:.2f}%<extra></extra>"),
                         name=f"{product} · {name}"
                         + (
                             " — APPLIED" if hist_mode == historical else " — comparison"
@@ -471,8 +479,11 @@ if section == "Forecasting":
                     )
                 )
         chart(fig, "Cumulative default %")
-        fig.update_xaxes(title="Months on book (MOB)")
+        fig.update_xaxes(title="Months on book (MOB)", dtick=3)
+        fig.update_layout(height=380, hovermode="closest", hoverlabel=dict(namelength=-1, bgcolor="white", font_size=12), margin=dict(l=15,r=15,t=15,b=120), legend=dict(orientation="h", y=-.3, yanchor="top", x=0))
+        fig.update_yaxes(ticksuffix="%")
         st.plotly_chart(fig, width="stretch")
+        st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
         st.caption(
             f"Applied: {mode} + product stress · {row_count:,} historical records · Censored vintage fit"
         )

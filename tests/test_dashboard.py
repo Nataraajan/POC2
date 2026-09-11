@@ -185,3 +185,15 @@ def test_navigation_preserves_forecast():
     assert at.number_input(key="driver_Short-Term_apps").value == 60000
     assert at.selectbox(key="driver_source").value == "Historical vintage"
     pd.testing.assert_frame_equal(full(at), expected)
+
+
+def test_annual_kpis_and_partial_year():
+    at = app()
+    cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
+    assert "$421.20M" in cards  # 35.1M originations x 12, not a monthly KPI
+    assert cards.count("Year 1") == 6 and cards.count("Year 2") == 6
+    assert "PLL / provision expense" in cards
+    assert "Charge-offs" not in cards
+    at.number_input(key="driver_horizon").set_value(18).run()
+    cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
+    assert cards.count("requires 24 forecast months") == 6

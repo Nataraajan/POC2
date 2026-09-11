@@ -44,7 +44,7 @@ loss severity. Prepayments and recoveries are not modeled.
 
 Base/Upside/Downside are explicitly illustrative presets for growth, approval,
 and stress. Other inputs are retained. Reset restores the starting assumptions.
-KPI month selects which forecast month the six cards display. The monthly
+The six KPI cards show Year 1 and Year 2 totals (months 1–12 and 13–24), with year-end snapshots for gross and net CLAB. PLL replaces charge-offs in the headline cards. Incomplete years show no annual value. Detail month selects the monthly runoff explanation. The monthly
 schedule remains visible; the reconciliation expander adds full balance detail
 and complete quarterly totals. Sidebar navigation opens Forecasting, Monthly
 schedule, Vintage analysis and Model assumptions while retaining drivers.

@@ -1,6 +1,6 @@
 # Validation — 11 September 2026
 
-**16 tests passed** after the opening-portfolio, navigation and Excel revision.
+**17 tests passed** after the opening-portfolio, navigation and Excel revision.
 
 - Original empty-book forecast matches a fixture captured from commit 0c82eb7.
 - Opening cohorts at MOB 0, MOB 3 and an even age mix repay fully and exhaust
@@ -35,3 +35,5 @@ module from the previous server session.
 
 Environment: Python 3.11, Streamlit 1.63.0, pandas 3.0.5, NumPy 2.4.6,
 Plotly 7.0.0, PyArrow 25.0.1, pytest 9.1.1.
+
+Annual KPI checks verify 12-month originations totals and suppress partial-year results. Browser review confirmed separated KPI cards and curve legend below the plot. Curve hover labels explicitly name product, source, applied/comparison status, MOB and percentage. Forecast engine and Excel formulas are unchanged by this presentation update.
