@@ -22,14 +22,13 @@ Opening reserve covers the remaining expected loss of the opening book.
 Charge-offs reduce gross principal and reserve. Revenue uses performing
 beginning principal less that month's charge-offs; new loans earn next month.
 LGD is 100%; no recoveries, prepayments or existing-reserve catch-up P&L.
-Product stress scales PD, capped at 99%. PLL/revenue 45–50% is a user-supplied
+Product PD is controlled directly, capped at 99%. PLL/revenue 45–50% is a user-supplied
 benchmark, not a forced result.
 
 The Excel download includes four auditable segment builds, two loan-type
 aggregations and a main financial schedule. Product share and credit inputs
 are on Assumptions; formulas recalculate the mix before losses and revenue.
-App exports carry applied stress in the exported base PDs; additional Excel
-stress starts at zero. Financial values display in thousands. Horizon totals
+The shared stress adjustment has been removed; app and Excel use product PD directly. Financial values display in thousands. Horizon totals
 use the chosen forecast length; a 36-month build remains available.
 
 Vintage analysis retains the original generation, SQL, sample rows, censored

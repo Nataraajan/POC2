@@ -89,12 +89,6 @@ def preset(name):
         st.session_state[p + "approval"] = (
             d["approval_rate"] + {"Base": 0.0, "Upside": 3.0, "Downside": -3.0}[name]
         )
-        st.session_state[p + "stress"] = {
-            "Base": 0.0,
-            "Upside": -20.0,
-            "Downside": 20.0,
-        }[name]
-    st.session_state["driver_product_stress"] = {"Base":0.0,"Upside":-20.0,"Downside":20.0}[name]
     st.session_state["scenario"] = name
 
 
@@ -148,7 +142,7 @@ def args(product, historical):
         midpoint_months=(
             fits[product]["midpoint_months"] if historical else ss[p + "days"] / 30
         ),
-        total_default_rate_pct=rate * (1 + ss[p + "stress"] / 100),
+        total_default_rate_pct=rate,
         opening_gross_clab=ss[p + "opening"],
         opening_age_months=(
             None
@@ -247,7 +241,7 @@ for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
         on_click=preset,
         args=(name,),
         width="stretch",
-        help="Sets growth, approval and credit stress; other drivers are retained.",
+        help="Sets growth and approval; product credit assumptions are retained.",
     )
 toolbar[5].button("Reset", on_click=reset, width="stretch")
 toolbar[6].markdown(
@@ -263,9 +257,7 @@ product_fits = default_product_curves()
 if st.session_state.get("applied_overlay", {}).get("product_fits"):
     product_fits = st.session_state["applied_overlay"]["product_fits"]
 with st.expander("Product credit assumptions", expanded=True):
-    st.session_state.setdefault("driver_product_stress",0.0)
-    product_stress=st.number_input("Product default-rate stress (%)",-100.0,100.0,key="driver_product_stress",on_change=custom)
-    product_fits={b:{**v,"total_default_rate_pct":min(99.0,v["total_default_rate_pct"]*(1+product_stress/100))} for b,v in product_fits.items()}
+    st.session_state.pop("driver_product_stress", None)
     risk_cols=st.columns(2)
     product_risks={}
     manual_product_risks={}
@@ -274,10 +266,10 @@ with st.expander("Product credit assumptions", expanded=True):
         st.session_state.setdefault(key+"_pd", default_pd)
         st.session_state.setdefault(key+"_mid", product_fits[brand]["midpoint_months"])
         risk_col.number_input(brand+" lifetime default (%)",0.0,99.0,key=key+"_pd",disabled=historical,on_change=custom)
-        risk_col.number_input(brand+" midpoint (MOB)",0.1,24.0,key=key+"_mid",disabled=historical,on_change=custom)
-        manual_product_risks[brand]={"total_default_rate_pct":min(99.0,st.session_state[key+"_pd"]*(1+product_stress/100)),"midpoint_months":st.session_state[key+"_mid"]}
+        risk_col.number_input(brand+" default timing (curve midpoint)",0.1,24.0,key=key+"_mid",disabled=historical,on_change=custom,help="Curve-shape timing parameter in months on book. Lower values move defaults earlier; higher values move them later. This is not the average month of default or a grace period. Historical mode fits it from synthetic vintage data.")
+        manual_product_risks[brand]={"total_default_rate_pct":st.session_state[key+"_pd"],"midpoint_months":st.session_state[key+"_mid"]}
         product_risks[brand]=product_fits[brand] if historical else manual_product_risks[brand]
-        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; midpoint {product_risks[brand]['midpoint_months']:.2f} MOB. PD capped at 99% after stress.")
+        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; midpoint {product_risks[brand]['midpoint_months']:.2f} MOB.")
     st.caption("Product curves apply to both loan types before losses and revenue are computed. Manual defaults 20% / 36% are illustrative generator assumptions. Historical mode uses the separate product vintage fits. LGD 100%, no recoveries.")
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
@@ -330,7 +322,7 @@ if section == "Forecasting":
                 key="driver_source",
             )
             historical = mode == "Historical vintage"
-            st.caption("Product risk and stress are controlled above.")
+            st.caption("Product default rates and timing are controlled above.")
             st.caption("Default probability and timing are set by product in Product credit assumptions above.")
         with cols[4]:
             st.markdown("**▧ Opening Portfolio**")
@@ -478,7 +470,7 @@ if section == "Forecasting":
         st.plotly_chart(fig, width="stretch")
         st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
         st.caption(
-            f"Applied: {mode} · separate CreditFresh and MoneyKey curves · synthetic product history; product PD includes stress."
+            f"Applied: {mode} · separate CreditFresh and MoneyKey curves · synthetic product history."
         )
         for brand, risk in product_risks.items():
             st.caption(f"{brand}: applied lifetime PD {risk['total_default_rate_pct']:.2f}%; midpoint {risk['midpoint_months']:.2f} MOB.")
@@ -628,5 +620,5 @@ if section == "Model assumptions":
             "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. No prepayments or recoveries are modeled."
         )
         st.write(
-            "Scenario buttons set growth, approval and default-rate stress; other assumptions are retained. Base: 0% growth / default approval / 0% stress. Upside: +2% monthly growth / +3 percentage points approval / −20% default rate. Downside: −2% growth / −3 percentage points approval / +20% default rate. Stress scales default probability, not loss severity."
+            "Scenario buttons change growth and approval only. Base: 0% growth / default approval. Upside: +2% monthly growth / +3 percentage points approval. Downside: −2% growth / −3 percentage points approval. Product default rates and timing are retained."
         )

@@ -46,14 +46,12 @@ def render_overlay(all_inputs, share=0.8, current_risks=None):
         fig.add_scatter(x=rows.mob,y=cumulative_default_pct(rows.mob,fit['midpoint_months'],fit['total_default_rate_pct']),name=source+' · fitted for forecast',line=dict(dash='dot'),hovertemplate='%{x} MOB · %{y:.2f}%<extra>%{fullData.name}</extra>')
     fig.update_layout(height=380,legend=dict(orientation='h',y=-.25),margin=dict(t=10,b=110),xaxis_title='Months on book',yaxis_title='Cumulative default (%)',paper_bgcolor='white',plot_bgcolor='white')
     st.plotly_chart(fig,width='stretch')
-    st.caption('The forecast uses the dotted fitted approximation (fixed curve shape), not the raw points. Fit uses equal MOB weights; product stress is applied afterward. Excel receives the same fitted parameters. Different source and forecast terms can change realized lifetime losses.')
+    st.caption('The forecast uses the dotted fitted approximation (fixed curve shape), not the raw points. Fit uses equal MOB weights; Excel receives the same fitted parameters. Different source and forecast terms can change realized lifetime losses.')
     ready = all(v != 'Choose source' for v in mapping.values())
     candidate = experiment['fits']
     from product_forecast import segment_forecasts, combine, default_product_curves
     before=segment_forecasts(all_inputs,share,current_risks or default_product_curves())
-    stress=st.session_state.get("driver_product_stress",0.0)
-    effective={b:{**v,"total_default_rate_pct":min(99.0,v["total_default_rate_pct"]*(1+stress/100))} for b,v in candidate.items()}
-    after=segment_forecasts(all_inputs,share,effective)
+    after=segment_forecasts(all_inputs,share,candidate)
     impacts=[]
     for brand in PRODUCTS:
         old=combine(before[brand].values()); new=combine(after[brand].values())
