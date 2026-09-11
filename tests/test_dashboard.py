@@ -203,7 +203,7 @@ def test_horizontal_schedule_reconciles():
     at = app()
     schedule = at.dataframe[0].value
     assert list(schedule.columns) == [f"Month {m}" for m in range(1, 25)]
-    np.testing.assert_allclose(schedule.loc["Short-Term revenue"] + schedule.loc["Installment revenue"], schedule.loc["Revenue"])
+    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"] + schedule.loc["MoneyKey revenue"], schedule.loc["Revenue"])
     np.testing.assert_allclose(schedule.loc["Revenue"].to_numpy()*1e6, full(at).Revenue)
     np.testing.assert_allclose(schedule.loc["Applications"].to_numpy(), full(at).Applications)
 
@@ -245,3 +245,15 @@ def test_vintage_experiment_applies_to_forecast():
     at.radio(key="navigation").set_value("Forecasting").run()
     assert at.selectbox(key="driver_source").value == "Historical vintage"
     assert not np.allclose(before["Provision expense"], full(at)["Provision expense"])
+
+
+def test_editable_brand_mix():
+    at = app()
+    total = full(at).Revenue.copy()
+    schedule = at.dataframe[0].value
+    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"], schedule.loc["Revenue"]*.8)
+    at.number_input(key="driver_creditfresh_mix").set_value(65.0).run()
+    schedule = at.dataframe[0].value
+    np.testing.assert_allclose(schedule.loc["CreditFresh revenue"], schedule.loc["Revenue"]*.65)
+    np.testing.assert_allclose(schedule.loc["MoneyKey revenue"], schedule.loc["Revenue"]*.35)
+    np.testing.assert_allclose(full(at).Revenue, total)

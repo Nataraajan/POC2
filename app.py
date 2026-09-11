@@ -237,7 +237,7 @@ st.markdown(
 st.caption("Applications → Originations → CLAB → Charge-offs → Revenue")
 toolbar = st.columns([1.2, 0.8, 0.65, 0.65, 0.8, 0.65, 1.5, 0.65])
 view = toolbar[0].selectbox(
-    "Portfolio", ["Combined"] + list(PRODUCT_DEFAULTS), key="portfolio"
+    "Loan-type view", ["Combined"] + list(PRODUCT_DEFAULTS), key="portfolio"
 )
 horizon = toolbar[1].number_input("Horizon (months)", 6, 36, 24, key="driver_horizon")
 for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
@@ -254,17 +254,21 @@ toolbar[6].markdown(
     unsafe_allow_html=True,
 )
 selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
+st.session_state.setdefault("driver_creditfresh_mix", 80.0)
+mix_left, mix_right = st.columns([1, 3])
+cf_mix = mix_left.number_input("CreditFresh share (%)", 0.0, 100.0, step=1.0, key="driver_creditfresh_mix", on_change=custom) / 100
+mix_right.caption(f"MoneyKey share: {1-cf_mix:.0%}. Editable product allocation applies to opening CLAB and originations within each loan type. Both products contain Short-Term and Installment loans; pricing, approval and credit curves are currently shared by loan type.")
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
     with st.container(border=True, key="driver_panel"):
         driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
         driver_title.subheader("Forecast Drivers")
         driver_note.caption(
-            "$639M end-Q2 CLAB treated as gross performing loans. Initial 40% / 60% product split and age mix are assumptions."
+            "$639M end-Q2 CLAB treated as gross performing loans. Initial 40% / 60% loan-type split and age mix are assumptions."
         )
         edit = (
             driver_product.selectbox(
-                "Edit product drivers",
+                "Edit loan-type drivers",
                 selected,
                 key="edit_product",
                 label_visibility="collapsed",
@@ -557,8 +561,8 @@ if section in ("Forecasting", "Monthly schedule"):
         with st.expander("How reserve and charge-offs reconcile"):
             st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
             st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
-        for product in selected:
-            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", forecasts[product].revenue)
+        for product, share in [("CreditFresh", cf_mix), ("MoneyKey", 1-cf_mix)]:
+            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", df.revenue * share)
         horizontal = summary.set_index("month").rename(columns=LABELS).T
         horizontal.columns = [f"Month {m}" for m in summary.month]
         horizontal.index.name = "Metric"
@@ -569,6 +573,7 @@ if section in ("Forecasting", "Monthly schedule"):
         st.dataframe(horizontal.style.format("{:,.2f}").format("{:,.0f}", subset=pd.IndexSlice[["Applications"], :]).format("{:.1f}%", subset=pd.IndexSlice[["Approval %"], :]), width="stretch", height=390)
         download, details = st.columns([1, 4])
         snapshot = {
+            "creditfresh_share": cf_mix,
             "source": mode,
             "scenario": st.session_state.get("scenario", "Base"),
             "view": view,
