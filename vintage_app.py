@@ -24,7 +24,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # The live demo calls these directly — no duplicated pipeline logic in this file.
-from generate_loans import generate
+from generate_loans import generate, PRODUCTS as GENERATOR_PRODUCTS
 from build_triangle import build_triangle, build_overlay_curve, OBSERVATION_DATE, TERMS
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -77,7 +77,8 @@ def show_triangle(triangle, product):
     st.dataframe(styled, width="stretch", height=35 * (n_rows + 1) + 3)
 
 
-def curve_figure(overlay, reference=None, height=380):
+def curve_figure(overlay, reference=None, height=380, names=None):
+    """names: optional {product: legend label} for the solid lines; defaults to the product name."""
     fig = go.Figure()
     if reference is not None:
         for product, color in PRODUCT_COLORS.items():
@@ -86,7 +87,8 @@ def curve_figure(overlay, reference=None, height=380):
                                      mode="lines", line=dict(color=color, width=2, dash="dot"), opacity=0.45))
     for product, color in PRODUCT_COLORS.items():
         sub = overlay[overlay["product"] == product]
-        fig.add_trace(go.Scatter(x=sub["mob"], y=sub["cum_default"], name=product, mode="lines+markers",
+        fig.add_trace(go.Scatter(x=sub["mob"], y=sub["cum_default"], name=(names or {}).get(product, product),
+                                 mode="lines+markers",
                                  line=dict(color=color, width=3),
                                  hovertemplate=f"{product} · MOB %{{x}}: %{{y:.1%}}<extra></extra>"))
     fig.update_layout(xaxis_title="Months on book (MOB)", yaxis_title="Cumulative default (% of originated $)",
@@ -217,41 +219,75 @@ st.plotly_chart(curve_figure(overlay_df), width="stretch")
 st.divider()
 heading("Live demo")
 st.markdown(
-    f"Runs the same `generate()` and `build_triangle()` functions from the scripts above on {LIVE_DEMO_ROWS:,} fresh "
-    f"rows, right now — a new random draw each click. **Smaller scale and separate from the "
-    f"{gen_stats['total_rows']:,}-row precomputed results above.**"
+    f"Pick a product, set its lifetime default rate, and run the same `generate()` and `build_triangle()` functions "
+    f"from the scripts above on {LIVE_DEMO_ROWS:,} fresh rows, right now. The other product stays at its baseline, so "
+    f"cause and effect is easy to follow. **Smaller scale and separate from the {gen_stats['total_rows']:,}-row "
+    f"precomputed results above.**"
 )
 
+
+def fmt_rate(pct):
+    return f"{pct:g}%"
+
+
+pick_col, rate_col = st.columns([1, 2])
+live_product = pick_col.radio("Product to tune", list(PRODUCT_COLORS), horizontal=True, key="live_product")
+baseline_pct = GENERATOR_PRODUCTS[live_product]["lifetime_default"] * 100
+# One slider key per product, so each starts at (and remembers) its own product's setting.
+live_rate_pct = rate_col.slider(f"{live_product} lifetime default rate (%)", 0.0, 50.0, value=baseline_pct, step=0.5,
+                                key=f"live_rate_{live_product}",
+                                help=f"{live_product}'s baseline in the generator is {fmt_rate(baseline_pct)}.")
+
 if st.button("Run live demo", type="primary"):
-    with st.spinner(f"Generating {LIVE_DEMO_ROWS:,} loans and building the triangle..."):
+    overrides = {live_product: live_rate_pct / 100}
+    with st.spinner(f"Generating {LIVE_DEMO_ROWS:,} loans with {live_product} at {fmt_rate(live_rate_pct)} "
+                    f"and building the triangle..."):
         t0 = time.perf_counter()
-        live_loans = generate(total_rows=LIVE_DEMO_ROWS, verbose=False)
+        live_loans = generate(total_rows=LIVE_DEMO_ROWS, verbose=False, lifetime_default_overrides=overrides)
         t1 = time.perf_counter()
         live_triangle = build_triangle(live_loans)
         live_overlay = build_overlay_curve(live_triangle)
         t2 = time.perf_counter()
-    st.session_state["live_demo"] = {
+    st.session_state["live_demo_run"] = {
         "rows": len(live_loans), "generate_s": t1 - t0, "aggregate_s": t2 - t1, "total_s": t2 - t0,
         "triangle": live_triangle, "overlay": live_overlay, "ran_at": datetime.now().strftime("%H:%M:%S"),
+        # The rates this run actually used, kept with the result — the label must not follow
+        # the slider if it moves after the run.
+        "tuned_product": live_product,
+        "rates_pct": {p: (live_rate_pct if p == live_product else cfg["lifetime_default"] * 100)
+                      for p, cfg in GENERATOR_PRODUCTS.items()},
     }
 
-live = st.session_state.get("live_demo")
+live = st.session_state.get("live_demo_run")
 if live:
+    tuned, rates = live["tuned_product"], live["rates_pct"]
+    labels = {p: (f"{p} — tuned to {fmt_rate(rates[p])} lifetime default" if p == tuned
+                  else f"{p} — baseline {fmt_rate(rates[p])}") for p in PRODUCT_COLORS}
+    curve_ends = live["overlay"].groupby("product")["cum_default"].last()
+
     with st.container(border=True):
-        st.markdown(f"<p style='color:{GREEN}; font-weight:700; margin:0;'>LIVE DEMO — smaller scale "
-                    f"({live['rows']:,} rows), run at {live['ran_at']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:{GREEN}; font-weight:700; margin:0;'>LIVE DEMO — {labels[tuned]} · smaller "
+                    f"scale ({live['rows']:,} rows), run at {live['ran_at']}</p>", unsafe_allow_html=True)
+        if (live_product, live_rate_pct) != (tuned, rates[tuned]):
+            st.caption(f"Showing the last run ({labels[tuned]}). Click **Run live demo** to apply "
+                       f"{live_product} at {fmt_rate(live_rate_pct)}.")
         l1, l2, l3, l4 = st.columns(4)
         l1.metric("Rows generated", f"{live['rows']:,}")
         l2.metric("Generate", f"{live['generate_s']:.2f}s")
         l3.metric("SQL aggregation + censoring", f"{live['aggregate_s']:.2f}s")
         l4.metric("Total elapsed", f"{live['total_s']:.2f}s")
 
-        live_tabs = st.tabs([f"{product} triangle" for product in PRODUCT_COLORS] + ["Curve"])
-        for tab, product in zip(live_tabs, PRODUCT_COLORS):
+        live_tabs = st.tabs(["Curve"] + [f"{product} triangle" for product in PRODUCT_COLORS])
+        with live_tabs[0]:
+            st.markdown(f"**{labels[tuned]}** — derived curve ends at {curve_ends[tuned]:.1%} "
+                        f"(target {fmt_rate(rates[tuned])}). "
+                        + " · ".join(f"{labels[p]}, derived {curve_ends[p]:.1%}" for p in PRODUCT_COLORS if p != tuned))
+            st.plotly_chart(curve_figure(live["overlay"], reference=overlay_df, height=340, names=labels),
+                            width="stretch")
+            st.caption(f"Solid lines: this live run. Dotted: the {gen_stats['total_rows']:,}-row precomputed curves at "
+                       f"baseline rates, for reference — the tuned product's curve moves to the new rate, the other "
+                       f"stays on its reference line (a sample {gen_stats['total_rows'] / live['rows']:.0f}x smaller, "
+                       f"so a little more noise).")
+        for tab, product in zip(live_tabs[1:], PRODUCT_COLORS):
             with tab:
                 show_triangle(live["triangle"], product)
-        with live_tabs[-1]:
-            st.plotly_chart(curve_figure(live["overlay"], reference=overlay_df, height=340), width="stretch")
-            st.caption(f"Solid lines: this live run. Dotted: the {gen_stats['total_rows']:,}-row precomputed curve, "
-                       f"for reference — a sample {gen_stats['total_rows'] / live['rows']:.0f}x smaller lands on the "
-                       f"same shape, just with a little more noise.")

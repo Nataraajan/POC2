@@ -37,7 +37,15 @@ def exponential_cum_curve(lifetime: float, term: int) -> np.ndarray:
     return lifetime * (1 - np.exp(-CURVE_K * k / term)) / (1 - np.exp(-CURVE_K))
 
 
-def generate(total_rows: int = 2_000_000, verbose: bool = True) -> pd.DataFrame:
+def generate(total_rows: int = 2_000_000, verbose: bool = True,
+             lifetime_default_overrides: dict = None) -> pd.DataFrame:
+    """
+    lifetime_default_overrides: optional dict like {"MoneyKey": 0.15} to
+    override that product's default PRODUCTS config for this run only —
+    used by the live-demo slider. Leaving this None (the default) preserves
+    exact existing behavior for the main 2M-row precompute path.
+    """
+    overrides = lifetime_default_overrides or {}
     # --- Step 1: monthly volume per product, seasonality-adjusted, rescaled to hit total_rows exactly ---
     n_vintages = len(VINTAGES)
     raw_monthly_share = np.array([SEASONALITY[v.month] for v in VINTAGES])
@@ -55,8 +63,15 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True) -> pd.DataFrame:
         yyyymm = vintage.year * 100 + vintage.month
         days_in_month = calendar.monthrange(vintage.year, vintage.month)[1]
 
-        for product_name, cfg in PRODUCTS.items():
-            n = int(round(vintage_total * cfg["share"]))
+        for product_idx, (product_name, cfg) in enumerate(PRODUCTS.items()):
+            # Round ONE product's count, derive the other as the exact
+            # remainder — rounding both shares independently can silently
+            # miss the vintage total by 1 (e.g. both rounding up).
+            if product_idx == 0:
+                n = int(round(vintage_total * cfg["share"]))
+                n_first_product = n
+            else:
+                n = vintage_total - n_first_product
             if n == 0:
                 continue
 
@@ -74,7 +89,7 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True) -> pd.DataFrame:
 
             # Per-vintage noise on lifetime default rate, then build this vintage's
             # own cumulative curve and derive default_mob for every loan in it at once.
-            vintage_lifetime = cfg["lifetime_default"] * RNG.uniform(0.92, 1.08)
+            vintage_lifetime = overrides.get(product_name, cfg["lifetime_default"]) * RNG.uniform(0.92, 1.08)
             term = cfg["term_months"]
             cum_curve = exponential_cum_curve(vintage_lifetime, term)
             incremental = np.diff(cum_curve, prepend=0.0)  # inc[0..term], sums to vintage_lifetime
@@ -107,58 +122,28 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True) -> pd.DataFrame:
         print(f"Vintages present: {df['vintage'].nunique()}")
         for product_name, cfg in PRODUCTS.items():
             sub = df[df["product"] == product_name]
-            term = cfg["term_months"]
-            cum_at_term = (sub["default_mob"] == term).sum()  # placeholder, real cum check below
-            observed_cum_rate = (sub["default_flag"].sum()) / len(sub)
+            observed_cum_rate = sub["default_flag"].mean()
+            target_used = overrides.get(product_name, cfg["lifetime_default"])
             print(f"{product_name}: full-sample lifetime default rate = {observed_cum_rate:.3f} "
-                  f"(target ~{cfg['lifetime_default']:.2f}, some vintage-noise spread expected)")
+                  f"(target ~{target_used:.2f}, some vintage-noise spread expected)")
 
     return df
 
 
 if __name__ == "__main__":
-    import json
+    import os
     import time
-    from datetime import datetime
-    from pathlib import Path
 
-    DATA_DIR = Path(__file__).resolve().parent / "data"
-    DATA_DIR.mkdir(exist_ok=True)
-    TOTAL_ROWS = 2_000_000
+    os.makedirs("data", exist_ok=True)
 
     t0 = time.time()
-    df = generate(total_rows=TOTAL_ROWS)
+    df = generate(total_rows=2_000_000)
     elapsed = time.time() - t0
-    print(f"\nGenerated in {elapsed:.2f}s")
-    print("\nSample rows:")
-    print(df.sample(10, random_state=1).to_string(index=False))
+    print(f"\nGenerated 2,000,000 rows in {elapsed:.2f}s")
 
-    # Full file for build_triangle.py (gitignored — too big to commit), plus a
-    # small illustrative sample the app can show without ever loading the full file.
-    df.to_parquet(DATA_DIR / "loans.parquet", index=False)
-    df.sample(20, random_state=1).sort_values("loan_id").to_csv(DATA_DIR / "loans_sample.csv", index=False)
+    df.to_parquet("data/loans.parquet", index=False)
+    df.sample(20, random_state=1).sort_values("vintage").to_csv("data/loans_sample.csv", index=False)
+    print("Saved data/loans.parquet and data/loans_sample.csv")
 
-    # --- Stats capture: real facts from THIS run, displayed by the app ---
-    # Same checks as generate()'s verbose output, recomputed here so they can be saved.
-    # Written fresh each run, so triangle stats from an older run never linger —
-    # build_triangle.py adds its own section afterwards.
-    stats = {"generation": {
-        "run_at": datetime.now().isoformat(timespec="seconds"),
-        "total_rows": len(df),
-        "generation_seconds": elapsed,
-        "loan_id_unique": bool(df["loan_id"].is_unique),
-        "vintages": int(df["vintage"].nunique()),
-        "vintage_range": [df["vintage"].min(), df["vintage"].max()],
-        "product_mix_pct": {
-            product_name: {"observed": float((df["product"] == product_name).mean() * 100),
-                           "target": round(cfg["share"] * 100, 4)}
-            for product_name, cfg in PRODUCTS.items()
-        },
-        "default_rate_vs_target": {
-            product_name: {"observed": float(df.loc[df["product"] == product_name, "default_flag"].mean()),
-                           "target": cfg["lifetime_default"]}
-            for product_name, cfg in PRODUCTS.items()
-        },
-    }}
-    (DATA_DIR / "generation_stats.json").write_text(json.dumps(stats, indent=2))
-    print(f"\nWrote {DATA_DIR / 'loans.parquet'}, loans_sample.csv, generation_stats.json")
+    size_mb = os.path.getsize("data/loans.parquet") / (1024 * 1024)
+    print(f"loans.parquet size: {size_mb:.1f} MB")

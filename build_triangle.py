@@ -52,16 +52,23 @@ GROUP BY product, vintage
 """
 
 
+SQL_COLUMNS = ["product", "vintage", "default_mob", "ticket"]  # the only columns the two queries read
+
+
 def build_triangle(loans_df: pd.DataFrame) -> pd.DataFrame:
     conn = sqlite3.connect(":memory:")
-    loans_df.to_sql("loans", conn, index=False)
+    # Only the columns the SQL reads go into SQLite — identical query results, and copying rows
+    # into the database is most of this function's cost.
+    loans_df[SQL_COLUMNS].to_sql("loans", conn, index=False)
 
     defaults_by_mob = pd.read_sql(RAW_AGGREGATION_SQL, conn)
     originations_by_vintage = pd.read_sql(ORIGINATIONS_SQL, conn)
+    # One dict lookup per triangle cell, instead of filtering the aggregate table for every cell.
+    nco_by_cell = {(product, vintage, mob): dollars for product, vintage, mob, dollars in
+                   defaults_by_mob[["product", "vintage", "mob", "dollars_defaulted_at_mob"]].itertuples(index=False)}
 
     rows = []
-    for _, orig_row in originations_by_vintage.iterrows():
-        product, vintage = orig_row["product"], orig_row["vintage"]
+    for product, vintage, originations in originations_by_vintage[["product", "vintage", "originations"]].itertuples(index=False):
         term = TERMS[product]
         max_observable_mob = min(term, months_elapsed(vintage))  # <-- the censoring rule
 
@@ -69,15 +76,9 @@ def build_triangle(loans_df: pd.DataFrame) -> pd.DataFrame:
             if mob > max_observable_mob:
                 continue  # not yet observable — leave this cell out of the triangle entirely
 
-            match = defaults_by_mob[
-                (defaults_by_mob["product"] == product) &
-                (defaults_by_mob["vintage"] == vintage) &
-                (defaults_by_mob["mob"] == mob)
-            ]
-            nco = match["dollars_defaulted_at_mob"].iloc[0] if len(match) else 0.0
             rows.append({
                 "product": product, "vintage": vintage, "mob": mob,
-                "originations": orig_row["originations"], "nco": nco,
+                "originations": originations, "nco": nco_by_cell.get((product, vintage, mob), 0.0),
             })
 
     triangle = pd.DataFrame(rows)
