@@ -41,3 +41,4 @@ Annual KPI checks verify 12-month originations totals and suppress partial-year 
 Executive KPI presentation preserves annual totals and shows PLL/revenue against the user-supplied benchmark. Horizontal schedule revenue and application rows reconcile to the underlying forecast. Cards and horizontal month headers visually checked in-browser.
 
 New integration test generates a changed vintage assumption, maps both source products, applies the fit and verifies forecast PLL changes. Existing 18 tests passed before the added integration test, which also passed.
+`nMain-sheet originations, gross/reserve roll-forwards, net CLAB and net revenue now use local row formulas. Average ticket uses independent approval-weighted product inputs to avoid circularity. Recalculated 2,757 values reconcile within $0.000000462; no formula errors. Native desktop Excel was not tested.
