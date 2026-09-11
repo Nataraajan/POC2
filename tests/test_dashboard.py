@@ -2,11 +2,16 @@ from pathlib import Path
 import sys
 import numpy as np
 import pandas as pd
+import pytest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from clab_forecast_engine_v2 import forecast_clab_v2
+from clab_forecast_engine_v2 import (
+    forecast_clab_v2,
+    cumulative_default_pct,
+    remaining_principal_fraction,
+)
 
 
 def app():
@@ -15,80 +20,151 @@ def app():
     return at
 
 
-def forecast(at):
+def full(at):
     assert not at.exception
     return at.dataframe[1].value
 
 
-def test_default_matches_existing_engine():
-    at = app()
-    expected = forecast_clab_v2(30000, [1.0] * 12, 30, 1500, 100, 2, 12, 12, 24)
-    actual = forecast(at)
-    np.testing.assert_allclose(actual.to_numpy(), expected.to_numpy(), rtol=1e-12)
-    assert at.metric[0].value == "$147.39M"
-
-
-def test_driver_changes_and_product_persistence():
-    at = app()
-    initial = forecast(at).copy()
-    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
-    changed = forecast(at).copy()
-    np.testing.assert_allclose(changed.iloc[:, 1:], initial.iloc[:, 1:] * 2)
-    at.radio(key="portfolio").set_value("Installment").run()
-    installment = forecast(at).copy()
-    at.radio(key="portfolio").set_value("Combined").run()
-    np.testing.assert_allclose(
-        forecast(at).iloc[:, 1:], changed.iloc[:, 1:] + installment.iloc[:, 1:]
+def engine(**changes):
+    args = dict(
+        monthly_applications_base=30000,
+        seasonality_pattern=[1.0] * 12,
+        approval_rate_pct=30.0,
+        avg_loan_size=1500.0,
+        annual_yield_pct=100.0,
+        midpoint_months=2.0,
+        total_default_rate_pct=12.0,
+        term_months=12,
+        horizon_months=24,
     )
-    at.radio(key="portfolio").set_value("Short-Term").run()
-    assert at.number_input(key="driver_Short-Term_apps").value == 60000
+    args.update(changes)
+    return forecast_clab_v2(**args)
 
 
-def test_apply_curve_and_restore_manual():
-    at = app()
-    at.slider(key="driver_Short-Term_rate").set_value(20.0).run()
-    manual = forecast(at).copy()
-    next(b for b in at.button if b.label == "Apply historical curve").click().run()
-    assert at.radio(key="driver_source").value == "Historical vintage"
-    assert at.slider(key="driver_Short-Term_rate").disabled
-    assert not np.allclose(forecast(at)["Revenue"], manual["Revenue"])
-    next(b for b in at.button if b.label == "Use manual assumptions").click().run()
-    pd.testing.assert_frame_equal(forecast(at), manual)
-    assert at.slider(key="driver_Short-Term_rate").value == 20.0
-
-
-def test_reconciliation_quarters_and_reset():
-    at = app()
-    at.radio(key="portfolio").set_value("Combined").run()
-    at.slider(key="driver_horizon").set_value(25).run()
-    f = forecast(at)
+def test_legacy_empty_book_regression():
+    expected = pd.read_csv(ROOT / "tests/legacy_forecast.csv")
     np.testing.assert_allclose(
-        f["Closing gross CLAB"],
+        engine().to_numpy(), expected.to_numpy(), rtol=1e-12, atol=1e-7
+    )
+
+
+@pytest.mark.parametrize("age", [0, 3, None])
+@pytest.mark.parametrize("yield_pct", [0.0, 100.0])
+def test_opening_cohorts_run_off_and_reserve_is_not_expensed(age, yield_pct):
+    f = engine(
+        monthly_applications_base=0,
+        opening_gross_clab=639e6,
+        opening_age_months=age,
+        annual_yield_pct=yield_pct,
+    )
+    assert f.beginning_gross_clab.iloc[0] == 639e6
+    assert np.allclose(f.new_provisions, 0)
+    assert f.beginning_reserve.iloc[0] > 0
+    np.testing.assert_allclose(f.principal_repaid.sum() + f.charge_offs.sum(), 639e6)
+    assert abs(f.ending_gross_clab.iloc[-1]) < 1e-5
+    assert abs(f.ending_reserve.iloc[-1]) < 1e-5
+    np.testing.assert_allclose(f.beginning_reserve.iloc[0], f.charge_offs.sum())
+    np.testing.assert_allclose(
+        f.revenue,
+        (f.beginning_gross_clab - f.charge_offs) * yield_pct / 1200,
+        atol=1e-7,
+    )
+    assert f.revenue.iloc[0] > 0 if yield_pct else f.revenue.iloc[0] == 0
+
+
+def test_opening_survivors_independent_first_month_calculation():
+    # Known cohort at MOB 3: condition defaults on survival and scheduled
+    # principal on its remaining balance, independently of convolution.
+    amount = 50e6
+    f = engine(
+        opening_gross_clab=amount, opening_age_months=3, monthly_applications_base=0
+    )
+    d3 = cumulative_default_pct(3, 2, 12) / 100
+    d4 = cumulative_default_pct(4, 2, 12) / 100
+    b3 = remaining_principal_fraction(3, 12, 100)
+    b4 = remaining_principal_fraction(4, 12, 100)
+    loss = amount * (d4 - d3) / (1 - d3)
+    repaid = amount * (1 - (d4 - d3) / (1 - d3)) * (1 - b4 / b3)
+    np.testing.assert_allclose(f.charge_offs.iloc[0], loss)
+    np.testing.assert_allclose(f.principal_repaid.iloc[0], repaid)
+    np.testing.assert_allclose(f.ending_gross_clab.iloc[0], amount - loss - repaid)
+
+
+def test_default_portfolio_uses_639m_and_month_one_revenue():
+    at = app()
+    f = full(at)
+    assert f["Opening gross CLAB"].iloc[0] == 639e6
+    assert f.Revenue.iloc[0] > 0
+    assert f["Net revenue"].iloc[0] > 0
+    assert f["Opening reserve"].iloc[0] > 0
+    np.testing.assert_allclose(
+        f["Gross CLAB"],
         f["Opening gross CLAB"]
-        + f["Originations"]
+        + f.Originations
         - f["Principal repayments"]
         - f["Charge-offs"],
     )
     np.testing.assert_allclose(
-        f["Closing reserve"],
-        f["Opening reserve"] + f["Provision expense"] - f["Charge-offs"],
+        f.Reserve, f["Opening reserve"] + f["Provision expense"] - f["Charge-offs"]
     )
-    np.testing.assert_allclose(f["Net revenue"], f["Revenue"] - f["Provision expense"])
-    next(r for r in at.radio if r.label == "Table period").set_value("Quarterly").run()
-    assert len(forecast(at)) == 8
-    assert np.isclose(forecast(at).Revenue.sum(), f.Revenue.iloc[:24].sum())
-    next(b for b in at.button if b.label == "Reset drivers").click().run()
-    assert not at.exception
-    assert at.slider(key="driver_horizon").value == 24
+    np.testing.assert_allclose(f["Net revenue"], f.Revenue - f["Provision expense"])
 
 
-def test_zero_originations_and_zero_yield():
+def test_product_persistence_and_combined_totals():
     at = app()
-    at.number_input(key="driver_Short-Term_apps").set_value(0).run()
-    assert np.allclose(forecast(at).iloc[:, 1:], 0)
-    at.number_input(key="driver_Short-Term_apps").set_value(30000).run()
-    at.slider(key="driver_Short-Term_yield").set_value(0.0).run()
-    assert np.allclose(forecast(at).Revenue, 0)
+    at.selectbox(key="portfolio").set_value("Short-Term").run()
+    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    short = full(at).copy()
+    at.selectbox(key="portfolio").set_value("Installment").run()
+    installment = full(at).copy()
+    at.selectbox(key="portfolio").set_value("Combined").run()
+    np.testing.assert_allclose(
+        full(at).iloc[:, 1:], short.iloc[:, 1:] + installment.iloc[:, 1:]
+    )
+    at.selectbox(key="portfolio").set_value("Short-Term").run()
+    assert at.number_input(key="driver_Short-Term_apps").value == 60000
+
+
+def test_historical_switch_and_restore():
+    at = app()
+    at.number_input(key="driver_Short-Term_rate").set_value(20.0).run()
+    manual = full(at).copy()
+    next(b for b in at.button if b.label == "Apply historical curve").click().run()
+    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    assert not np.allclose(full(at).Revenue, manual.Revenue)
+    at.selectbox(key="driver_source").set_value("Manual assumptions").run()
+    pd.testing.assert_frame_equal(full(at), manual)
+    assert at.number_input(key="driver_Short-Term_rate").value == 20.0
+
+
+def test_growth_scenarios_reset_and_partial_quarter():
+    at = app()
+    next(b for b in at.button if b.label == "Upside").click().run()
+    assert full(at).Applications.iloc[1] > full(at).Applications.iloc[0]
+    at.number_input(key="driver_horizon").set_value(25).run()
+    f = full(at).copy()
+    next(r for r in at.radio if r.label == "Table period").set_value("Quarterly").run()
+    assert len(full(at)) == 8
+    np.testing.assert_allclose(full(at).Revenue.sum(), f.Revenue.iloc[:24].sum())
+    next(b for b in at.button if b.label == "Reset").click().run()
+    assert at.number_input(key="driver_horizon").value == 24
+    assert at.number_input(key="driver_Short-Term_opening").value == 255600000.0
+
+
+def test_term_one_and_single_age():
+    at = app()
+    at.number_input(key="driver_Short-Term_term").set_value(1).run()
+    assert not at.exception
+    at.selectbox(key="driver_Short-Term_age_mix").set_value(
+        "Single cohort at specified MOB"
+    ).run()
+    assert not at.exception
+    assert at.number_input(key="driver_Short-Term_age").value == 0
+
+
+def test_invalid_opening_age():
+    with pytest.raises(ValueError):
+        engine(opening_gross_clab=1e6, opening_age_months=12)
 
 
 def test_vintage_app_smoke():

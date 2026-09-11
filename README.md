@@ -1,42 +1,57 @@
-# CLAB driver dashboard
-
-Run from this directory:
+# LendSight — CLAB driver forecast
 
 ```sh
 python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Use the sidebar to change demand, underwriting, yield, term, default timing,
-default rate and seasonality. Switch between Short-Term, Installment and
-Combined. Both products keep their assumptions when switching views.
+The dashboard follows the supplied LendSight reference: navy navigation,
+five driver groups, six monthly KPI cards, revenue and curve charts side by
+side, and a visible monthly forecast schedule. All displayed controls operate
+on the forecast. Search, notifications and unsupported modules from the image
+are omitted rather than presented as inactive controls.
 
-The default-curve chart compares manual assumptions with the existing
-historical fit. **Apply historical curve** updates the actual forecast and
-shows the revenue change against the current manual assumptions. Switch back
-to restore the manual curve. Reset drivers restores the initial assumptions.
+## Opening portfolio
 
-Monthly revenue, provision expense and net revenue are visible below the
-charts. The Forecast table tab includes the full balance roll-forward,
-quarterly totals, a monthly CSV download and an assumptions JSON download.
-Quarterly tables exclude incomplete quarters; horizon totals include every month.
+The initial combined opening CLAB is **$639M at end-Q2**, supplied by the user.
+It is treated as gross performing principal. The initial allocation of 40%
+Short-Term ($255.6M) / 60% Installment ($383.4M) is **an assumption**; use the
+product selector to edit either balance. It is not a reported product split.
 
-## Preserved model and data
+MOB composition is unknown. The default assumes equal current balances across
+each active MOB from zero through term minus one. A single opening cohort age
+is also supported. Existing loans run off through principal payments and
+charge-offs, and earn interest from the first forecast month. Their opening
+reserve equals remaining expected losses and is not booked as a new expense.
 
-`clab_forecast_engine_v2.py`, the historical curve derivation, loan datasets,
-and the standalone `vintage_app.py` / `build_triangle.py` pipeline are unchanged.
-Formatting and the cached historical loader moved to `dashboard_support.py`.
+Changing credit assumptions recomputes the modeled opening reserve. This is
+a planning scenario, not an accounting catch-up calculation against an actual
+booked allowance. Actual cohort balances, contractual yields and the actual
+booked reserve should replace assumptions when available.
 
-The forecast uses the existing Short-Term / Installment synthetic loan history.
-The separate 2M-loan CreditFresh / MoneyKey analysis can still be launched with
-`python -m streamlit run vintage_app.py`. Its products are not automatically
-mapped to the forecast products. No new raw-data benchmark is claimed.
+New originations still earn starting the following month. Their lifetime loss
+provision is booked at origination. This preserves the original timing model;
+the earlier zero-revenue month arose because the original forecast had no
+opening book. Setting opening balances to zero reproduces that behavior.
 
-The model still starts from an empty book, uses level-payment amortization,
-books lifetime expected losses at origination and earns revenue starting the
-following month. Charge-offs reduce both gross CLAB and the reserve; they are
-not expensed again. There are no prepayments or recoveries. Yield also determines
-the contractual repayment schedule.
+## Drivers and outputs
+
+The top panel controls applications, monthly growth, seasonality, approval,
+loan size, term, annual yield, manual/historical curves, default-rate stress,
+and opening portfolio assumptions. Yield retains its original dual role as
+contractual rate and revenue yield. Stress scales default probability, not
+loss severity. Prepayments and recoveries are not modeled.
+
+Base/Upside/Downside are explicitly illustrative presets for growth, approval,
+and stress. Other inputs are retained. Reset restores the starting assumptions.
+KPI month selects which forecast month the six cards display. The monthly
+schedule remains visible; the reconciliation expander adds full balance detail
+and complete quarterly totals. CSV and assumptions JSON exports are available.
+
+Historical fitting and censoring are unchanged. The forecast uses its original
+Short-Term / Installment synthetic history. The separate CreditFresh / MoneyKey
+2M-loan pipeline remains available via `streamlit run vintage_app.py`; its
+products are not mapped to the forecast. No new 2M-row benchmark is claimed.
 
 ## Validation
 
@@ -45,11 +60,6 @@ python -m pip install pytest
 python -m pytest tests -q
 ```
 
-Tests cover default-output equivalence to the original engine, driver effects,
-product persistence and combined totals, historical/manual switching, balance
-and reserve reconciliation, partial quarters, reset, zero-volume/zero-yield
-cases, and standalone vintage startup.
-
-The redesign follows the requested driver-dashboard structure. The referenced
-conversation supplied screenshots of the old UI, but no generated mockup image
-was recoverable, so this is not a verified pixel-for-pixel reproduction.
+See VALIDATION.md for checks and assumptions. The model remains a planning
+prototype; the supplied opening balance does not turn synthetic loan history
+or demo yields into company actuals.
