@@ -266,11 +266,11 @@ with st.expander("Product credit assumptions", expanded=True):
         st.session_state.setdefault(key+"_pd", default_pd)
         st.session_state.setdefault(key+"_mid", product_fits[brand]["midpoint_months"])
         risk_col.number_input(brand+" lifetime default (%)",0.0,99.0,key=key+"_pd",disabled=historical,on_change=custom)
-        risk_col.number_input(brand+" default timing (curve midpoint)",0.1,24.0,key=key+"_mid",disabled=historical,on_change=custom,help="Curve-shape timing parameter in months on book. Lower values move defaults earlier; higher values move them later. This is not the average month of default or a grace period. Historical mode fits it from synthetic vintage data.")
-        manual_product_risks[brand]={"total_default_rate_pct":st.session_state[key+"_pd"],"midpoint_months":st.session_state[key+"_mid"]}
+        risk_col.caption("Default and payoff timing come from the 36-vintage payment analysis.")
+        manual_product_risks[brand]={**product_fits[brand],"total_default_rate_pct":st.session_state[key+"_pd"],"midpoint_months":st.session_state[key+"_mid"]}
         product_risks[brand]=product_fits[brand] if historical else manual_product_risks[brand]
-        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; midpoint {product_risks[brand]['midpoint_months']:.2f} MOB.")
-    st.caption("Product curves apply to both loan types before losses and revenue are computed. Manual defaults 20% / 36% are illustrative generator assumptions. Historical mode uses the separate product vintage fits. LGD 100%, no recoveries.")
+        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; timing from observed default/payoff curves.")
+    st.caption("Product curves apply to both loan types before losses and revenue are computed. Manual defaults 20% / 36% are illustrative generator assumptions. Historical mode uses the separate product vintage fits. LGD 100%, no recoveries. Payoff timing is modeled from generated loan outcomes.")
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
     with st.container(border=True, key="driver_panel"):
@@ -462,7 +462,9 @@ if section == "Forecasting":
         for brand, color in [("CreditFresh", "#172468"), ("MoneyKey", "#348ad2")]:
             ages=np.arange(max(horizon,24)+1)
             for applied, curve in [(True,product_risks[brand]),(False,manual_product_risks[brand] if historical else product_fits[brand])]:
-                fig.add_scatter(x=ages,y=cumulative_default_pct(ages,curve["midpoint_months"],curve["total_default_rate_pct"]),name=brand+(" — APPLIED" if applied else " — comparison"),line=dict(color=color,width=3 if applied else 1,dash="solid" if applied else "dot"),hovertemplate=brand+"<br>MOB %{x}<br>Default %{y:.2f}%<extra></extra>")
+                fig.add_scatter(x=ages,y=np.interp(ages,np.arange(len(curve["default_shape"])),curve["default_shape"])*curve["total_default_rate_pct"],name=brand+(" — APPLIED" if applied else " — comparison"),line=dict(color=color,width=3 if applied else 1,dash="solid" if applied else "dot"),hovertemplate=brand+"<br>MOB %{x}<br>Default %{y:.2f}%<extra></extra>")
+        for brand, curve in product_risks.items():
+            fig.add_scatter(x=ages,y=np.interp(ages,np.arange(len(curve['payoff_shape'])),curve['payoff_shape'])*(100-curve['total_default_rate_pct']),name=brand+' â€” cumulative payoff',line=dict(dash='dash'))
         chart(fig, "Cumulative default %")
         fig.update_xaxes(title="Months on book (MOB)", dtick=3)
         fig.update_layout(height=380, hovermode="closest", hoverlabel=dict(namelength=-1, bgcolor="white", font_size=12), margin=dict(l=15,r=15,t=15,b=120), legend=dict(orientation="h", y=-.3, yanchor="top", x=0))
@@ -473,7 +475,7 @@ if section == "Forecasting":
             f"Applied: {mode} · separate CreditFresh and MoneyKey curves · synthetic product history."
         )
         for brand, risk in product_risks.items():
-            st.caption(f"{brand}: applied lifetime PD {risk['total_default_rate_pct']:.2f}%; midpoint {risk['midpoint_months']:.2f} MOB.")
+            st.caption(f"{brand}: applied lifetime PD {risk['total_default_rate_pct']:.2f}%; empirical default/payoff timing.")
         st.button(
             "Apply historical curve",
             on_click=apply_historical,
@@ -595,7 +597,7 @@ if section == "Vintage analysis":
             live = st.session_state["live_demo_run"]
             st.session_state["overlay_experiment_result"] = {
                 "triangle": live["triangle"], "overlay": live["overlay"],
-                "fits": fit_overlay(live["overlay"]), "rates": live["rates_pct"],
+                "fits": live["payment_curves"], "rates": live["rates_pct"],
             }
             st.session_state["navigation"] = "Vintage overlay"
         st.button("Preview this live curve in forecast overlay", on_click=preview_live_overlay, type="primary")
@@ -617,7 +619,7 @@ if section == "Model assumptions":
             "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
         )
         st.write(
-            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. No prepayments or recoveries are modeled."
+            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. Early payoffs use the observed payoff curve; recoveries are not modeled."
         )
         st.write(
             "Scenario buttons change growth and approval only. Base: 0% growth / default approval. Upside: +2% monthly growth / +3 percentage points approval. Downside: −2% growth / −3 percentage points approval. Product default rates and timing are retained."

@@ -36,3 +36,19 @@ triangles and live demo. Vintage overlay previews and applies product curves.
 The main schedule shows months horizontally and product revenue separately.
 
 Run `python -m pytest tests -q` for engine, UI and integration checks.
+
+
+## 36-vintage payment update
+The updated generator covers July 2023–June 2026 and includes mutually exclusive
+default and payoff months. A new 100,000-loan run produces committed default and
+payoff shapes in data/payment_curves.json. Both shapes use fully observed
+vintages at the June 2026 cutoff, with original-ticket weighting and a common
+denominator. Older 2M-run displays are separate reference results.
+The forecast uses empirical timing directly, rather than the previous sigmoid
+midpoint. Product PD sets the mass of default outcomes; its complement sets the
+mass of payoff outcomes. Scheduled amortization continues until default, payoff
+or term. Early payoff removes remaining principal after the scheduled payment.
+This models payoff behavior, not an observed monthly cash-collection ledger.
+The generator still has 9/5-month source terms, not 36-month loans. Existing
+opening age mixes include only ages with surviving balances. The four Excel
+segments use the same empirical arrays and balance/revenue formulas.

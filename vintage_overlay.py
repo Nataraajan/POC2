@@ -31,7 +31,7 @@ def render_overlay(all_inputs, share=0.8, current_risks=None):
             loans = generate(total_rows=100_000, verbose=False, lifetime_default_overrides={p:r/100 for p,r in rates.items()})
             triangle = build_triangle(loans)
             overlay = build_overlay_curve(triangle)
-            st.session_state['overlay_experiment_result'] = {'triangle':triangle, 'overlay':overlay, 'fits':fit_overlay(overlay), 'rates':rates}
+            st.session_state['overlay_experiment_result'] = {'triangle':triangle, 'overlay':overlay, 'fits':__import__('payment_curves').derive_payment_curves(loans), 'rates':rates}
     experiment = st.session_state.get('overlay_experiment_result')
     if experiment is None:
         st.info('Generate curves to preview their impact. This does not change the forecast until you apply a mapping below.')
@@ -43,10 +43,11 @@ def render_overlay(all_inputs, share=0.8, current_risks=None):
     for source, fit in experiment['fits'].items():
         rows = experiment['overlay'].query('product == @source')
         fig.add_scatter(x=rows.mob,y=rows.cum_default*100,name=source+' · derived',mode='lines+markers',hovertemplate='%{x} MOB · %{y:.2f}%<extra>%{fullData.name}</extra>')
-        fig.add_scatter(x=rows.mob,y=cumulative_default_pct(rows.mob,fit['midpoint_months'],fit['total_default_rate_pct']),name=source+' · fitted for forecast',line=dict(dash='dot'),hovertemplate='%{x} MOB · %{y:.2f}%<extra>%{fullData.name}</extra>')
+        fig.add_scatter(x=rows.mob,y=np.interp(rows.mob,np.arange(37),fit['default_shape'])*fit['total_default_rate_pct'],name=source+' · fitted for forecast',line=dict(dash='dot'),hovertemplate='%{x} MOB · %{y:.2f}%<extra>%{fullData.name}</extra>')
+        fig.add_scatter(x=list(range(37)),y=np.array(fit['payoff_shape'])*(100-fit['total_default_rate_pct']),name=source+' Â· payoff applied',line=dict(dash='dash'))
     fig.update_layout(height=380,legend=dict(orientation='h',y=-.25),margin=dict(t=10,b=110),xaxis_title='Months on book',yaxis_title='Cumulative default (%)',paper_bgcolor='white',plot_bgcolor='white')
     st.plotly_chart(fig,width='stretch')
-    st.caption('The forecast uses the dotted fitted approximation (fixed curve shape), not the raw points. Fit uses equal MOB weights; Excel receives the same fitted parameters. Different source and forecast terms can change realized lifetime losses.')
+    st.caption('The forecast uses the dotted fitted approximation (empirical default and payoff timing), not the raw points. Timing uses fully observed vintages with a consistent denominator; Excel receives the same fitted parameters. Different source and forecast terms can change realized lifetime losses.')
     ready = all(v != 'Choose source' for v in mapping.values())
     candidate = experiment['fits']
     from product_forecast import segment_forecasts, combine, default_product_curves

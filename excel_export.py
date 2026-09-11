@@ -57,6 +57,10 @@ def input_cells(snapshot):
             active=snapshot["brand_risks"][brand]
             manual=snapshot.get("manual_brand_risks",snapshot["brand_risks"])[brand]
             historical=snapshot.get("historical_brand_risks",snapshot["brand_risks"])[brand]
+            if active.get("default_shape") is not None:
+                for m,(d,pay) in enumerate(zip(active["default_shape"],active["payoff_shape"])):
+                    out[f"{c}{65+m}"]=d
+                    out[f"{'H' if c=='E' else 'I'}{65+m}"]=pay
             for r,v in [(52,manual["total_default_rate_pct"]/100),(53,manual["midpoint_months"]),(54,historical["total_default_rate_pct"]/100),(55,historical["midpoint_months"])]:
                 out[f"{c}{r}"]=v
     for p, c in [("Short-Term", "E"), ("Installment", "F")]:

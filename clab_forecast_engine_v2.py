@@ -146,6 +146,8 @@ def forecast_clab_v2(
     opening_gross_clab: float = 0.0,
     opening_age_months: int | None = 0,
     monthly_growth_pct: float = 0.0,
+    default_shape: list | None = None,
+    payoff_shape: list | None = None,
 ) -> pd.DataFrame:
     """
     seasonality_pattern: exactly 12 multipliers (month 1..12), cycles
@@ -175,6 +177,26 @@ def forecast_clab_v2(
     if not np.isfinite(monthly_growth_pct) or monthly_growth_pct < -100:
         raise ValueError("Monthly growth must be finite and at least -100%")
 
+    def survival_at(age):
+        if default_shape is None:
+            return 1-cumulative_default_pct(age,midpoint_months,total_default_rate_pct)/100
+        d=np.interp(age,np.arange(len(default_shape)),default_shape)
+        p=np.interp(age,np.arange(len(payoff_shape)),payoff_shape)
+        return np.maximum(0,1-total_default_rate_pct/100*d-(1-total_default_rate_pct/100)*p)
+
+    def flow_curves(mid,rate,term,yield_pct,max_age):
+        if default_shape is None:
+            return vintage_curves(mid,rate,term,yield_pct,max_age)
+        age=np.arange(max_age+1)
+        d=np.interp(age,np.arange(len(default_shape)),default_shape)*rate/100
+        p=np.interp(age,np.arange(len(payoff_shape)),payoff_shape)*(1-rate/100)
+        bal=remaining_principal_fraction(age,term,yield_pct)
+        prev=np.r_[1,bal[:-1]]; pp=np.r_[0,p[:-1]]
+        loss=np.diff(d,prepend=0)*prev
+        repay=(1-d-pp)*(prev-bal)+np.diff(p,prepend=0)*bal
+        loss[0]=repay[0]=0
+        return {'charge_off':loss,'principal':repay}
+
     months = np.arange(1, horizon_months + 1)
 
     # --- Vectorized originations series, no loop ---
@@ -187,12 +209,10 @@ def forecast_clab_v2(
     originations = applications * (approval_rate_pct / 100.0) * avg_loan_size
 
     # --- Provisioning: lifetime expected loss, booked in full the month of origination ---
-    new_provisions = originations * lifetime_expected_loss(
-        midpoint_months, total_default_rate_pct, term_months, annual_yield_pct
-    )
+    new_provisions = originations * flow_curves(midpoint_months,total_default_rate_pct,term_months,annual_yield_pct,term_months+1)["charge_off"].sum()
 
     # --- Charge-offs and repayments via convolution, not a nested loop ---
-    curves = vintage_curves(
+    curves = flow_curves(
         midpoint_months,
         total_default_rate_pct,
         term_months,
@@ -216,19 +236,17 @@ def forecast_clab_v2(
             if opening_age_months is None
             else [opening_age_months]
         )
-        opening_curves = vintage_curves(
+        opening_curves = flow_curves(
             midpoint_months,
             total_default_rate_pct,
             term_months,
             annual_yield_pct,
             max(max(ages) + horizon_months, term_months + 1),
         )
+        if opening_age_months is None:
+            ages=[age for age in ages if survival_at(age)>1e-10]
         for age in ages:
-            survival = (
-                1
-                - cumulative_default_pct(age, midpoint_months, total_default_rate_pct)
-                / 100
-            )
+            survival = survival_at(age)
             remaining = float(
                 remaining_principal_fraction(age, term_months, annual_yield_pct)
             )

@@ -19,7 +19,7 @@ import calendar
 
 RNG = np.random.default_rng(seed=42)
 
-VINTAGES = pd.period_range("2024-07", "2026-06", freq="M")  # 24 months
+VINTAGES = pd.period_range("2023-07", "2026-06", freq="M")  # 36 months
 PRODUCTS = {
     "CreditFresh": {"share": 0.58, "ticket": 1800.0, "term_months": 9, "lifetime_default": 0.20},
     "MoneyKey": {"share": 0.42, "ticket": 700.0, "term_months": 5, "lifetime_default": 0.36},
@@ -35,6 +35,21 @@ def exponential_cum_curve(lifetime: float, term: int) -> np.ndarray:
     """cum[k] for k=0..term. Hits exactly `lifetime` at k=term, by construction."""
     k = np.arange(0, term + 1)
     return lifetime * (1 - np.exp(-CURVE_K * k / term)) / (1 - np.exp(-CURVE_K))
+
+
+PAYOFF_DECAY_K = 2.5  # fixed shape constant — not a tunable input, mirrors CURVE_K's role
+
+
+def payoff_timing_distribution(term: int) -> np.ndarray:
+    """Probability distribution over payoff month (1..term) for loans that
+    DON'T default — front-loaded (peaks early, decays toward term), using a
+    fixed decay shape, not a rate anyone has to guess. This is a genuine
+    timing distribution, not a rate: by construction it always sums to
+    exactly 1.0, since every non-defaulting loan pays off SOMEWHERE by
+    month `term` (that's the definition of not defaulting)."""
+    months = np.arange(1, term + 1)
+    weights = np.exp(-PAYOFF_DECAY_K * months / term)
+    return weights / weights.sum()
 
 
 def generate(total_rows: int = 2_000_000, verbose: bool = True,
@@ -101,6 +116,18 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True,
             draws = RNG.uniform(0, 1, size=n)
             outcome_idx = np.searchsorted(cum_probs, draws)  # vectorized — no per-loan loop
             default_mob = np.where(outcome_idx <= term, outcome_idx, -1)
+            default_flag = (default_mob >= 0).astype(int)
+
+            # For every loan that did NOT default, draw its payoff month from
+            # the front-loaded payoff-timing distribution — vectorized the
+            # same way as the default draw above, no per-loan loop.
+            payoff_dist = payoff_timing_distribution(term)
+            payoff_cum_probs = np.cumsum(payoff_dist)
+            payoff_cum_probs[-1] = 1.0  # guard against float drift
+            payoff_draws = RNG.uniform(0, 1, size=n)
+            payoff_month_idx = np.searchsorted(payoff_cum_probs, payoff_draws) + 1  # months are 1-indexed
+            # Only applies to non-defaulting loans — defaulted loans get -1 (mutually exclusive with default_mob).
+            payoff_mob = np.where(default_flag == 0, payoff_month_idx, -1)
 
             all_frames.append(pd.DataFrame({
                 "loan_id": loan_id,
@@ -110,7 +137,9 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True,
                 "ticket": np.round(ticket, 2),
                 "term_months": term,
                 "default_mob": default_mob,
-                "default_flag": (default_mob >= 0).astype(int),
+                "default_flag": default_flag,
+                "payoff_mob": payoff_mob,
+                "payoff_flag": (payoff_mob >= 0).astype(int),
             }))
 
     df = pd.concat(all_frames, ignore_index=True)

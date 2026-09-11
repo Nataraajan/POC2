@@ -98,6 +98,17 @@ def curve_figure(overlay, reference=None, height=380, names=None):
 
 
 def render_vintage_analysis():
+    from payment_curves import load_payment_curves, derive_payment_curves
+    st.subheader("36-vintage default and payoff analysis")
+    st.caption("Updated 100,000-loan run: July 2023–June 2026. Both curves use fully mature vintages at the June 2026 cutoff. The older 2M run is retained below as a separate reference.")
+    st.dataframe(pd.read_csv(DATA_DIR / "payment_sample.csv"),hide_index=True)
+    payment_fig=go.Figure()
+    for brand,risk in load_payment_curves().items():
+        payment_fig.add_scatter(x=list(range(37)),y=[v*risk['total_default_rate_pct'] for v in risk['default_shape']],name=brand+' default')
+        payment_fig.add_scatter(x=list(range(37)),y=[v*(100-risk['total_default_rate_pct']) for v in risk['payoff_shape']],name=brand+' payoff',line=dict(dash='dash'))
+    payment_fig.update_layout(xaxis_title="Months on book",yaxis_title="Cumulative share (%)",height=320)
+    st.plotly_chart(payment_fig,width="stretch")
+
     st.markdown(f"<h1 style='color:{NAVY};'>Vintage Analysis — Proof of Concept</h1>", unsafe_allow_html=True)
     st.caption("Loan-level data → SQL-aggregated vintage triangle, censored at the observation date → derived default curve.")
 
@@ -249,7 +260,7 @@ def render_vintage_analysis():
             live_overlay = build_overlay_curve(live_triangle)
             t2 = time.perf_counter()
         st.session_state["live_demo_run"] = {
-            "rows": len(live_loans), "generate_s": t1 - t0, "aggregate_s": t2 - t1, "total_s": t2 - t0,
+            "payment_curves": derive_payment_curves(live_loans), "rows": len(live_loans), "generate_s": t1 - t0, "aggregate_s": t2 - t1, "total_s": t2 - t0,
             "triangle": live_triangle, "overlay": live_overlay, "ran_at": datetime.now().strftime("%H:%M:%S"),
             # The rates this run actually used, kept with the result — the label must not follow
             # the slider if it moves after the run.

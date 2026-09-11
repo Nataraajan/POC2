@@ -259,3 +259,14 @@ def test_editable_brand_mix():
     np.testing.assert_allclose(at.dataframe[0].value.loc["MoneyKey revenue"], 0)
     at.number_input(key="driver_creditfresh_mix").set_value(0.0).run()
     np.testing.assert_allclose(at.dataframe[0].value.loc["CreditFresh revenue"], 0)
+
+
+def test_payoffs_change_revenue_and_reconcile():
+    from product_forecast import default_product_curves, segment_forecasts, combine
+    risks=default_product_curves()
+    args=dict(monthly_applications_base=30000,seasonality_pattern=[1.]*12,approval_rate_pct=30.,avg_loan_size=1500.,annual_yield_pct=100.,midpoint_months=2.,total_default_rate_pct=20.,term_months=12,horizon_months=36,opening_gross_clab=0.,opening_age_months=None,monthly_growth_pct=0.)
+    with_pay=combine(v['Short-Term'] for v in segment_forecasts({'Short-Term':args},.8,risks).values())
+    no_pay={b:{**r,'payoff_shape':[0.]*37} for b,r in risks.items()}
+    without=combine(v['Short-Term'] for v in segment_forecasts({'Short-Term':args},.8,no_pay).values())
+    assert with_pay.revenue.sum() < without.revenue.sum()
+    np.testing.assert_allclose(with_pay.ending_gross_clab,with_pay.beginning_gross_clab+with_pay.originations-with_pay.principal_repaid-with_pay.charge_offs,atol=.00001)
