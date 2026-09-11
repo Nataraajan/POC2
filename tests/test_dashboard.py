@@ -170,3 +170,18 @@ def test_invalid_opening_age():
 def test_vintage_app_smoke():
     at = AppTest.from_file(str(ROOT / "vintage_app.py"), default_timeout=30).run()
     assert not at.exception
+
+
+def test_navigation_preserves_forecast():
+    at = app()
+    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    at.selectbox(key="driver_source").set_value("Historical vintage").run()
+    expected = full(at).copy()
+    for page in ["Monthly schedule", "Vintage analysis", "Model assumptions"]:
+        at.radio(key="navigation").set_value(page).run()
+        assert not at.exception
+        assert at.radio(key="navigation").value == page
+    at.radio(key="navigation").set_value("Forecasting").run()
+    assert at.number_input(key="driver_Short-Term_apps").value == 60000
+    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    pd.testing.assert_frame_equal(full(at), expected)

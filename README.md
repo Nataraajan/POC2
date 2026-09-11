@@ -46,7 +46,21 @@ Base/Upside/Downside are explicitly illustrative presets for growth, approval,
 and stress. Other inputs are retained. Reset restores the starting assumptions.
 KPI month selects which forecast month the six cards display. The monthly
 schedule remains visible; the reconciliation expander adds full balance detail
-and complete quarterly totals. CSV and assumptions JSON exports are available.
+and complete quarterly totals. Sidebar navigation opens Forecasting, Monthly
+schedule, Vintage analysis and Model assumptions while retaining drivers.
+
+The Excel model download contains editable assumptions, a monthly financial
+statement and both product cohort builds with auditable formulas. Blue text
+marks inputs, black text formulas and green text cross-sheet links. Amounts
+are shown in thousands, with balance checks and a 36-month calculation build;
+selected-horizon totals match the app. Excel recalculates on opening. Historical
+fit parameters are imported from Python; the resulting default curves and all
+forecast cash flows are calculated in Excel. CSV and assumptions JSON remain available.
+
+The active default curve is labeled APPLIED; historical mode also reports its
+revenue/provision impact against manual assumptions with other drivers fixed.
+Revenue can decline because the opening portfolio runs off faster than new
+originations replace it. The dashboard shows this monthly balance bridge.
 
 Historical fitting and censoring are unchanged. The forecast uses its original
 Short-Term / Installment synthetic history. The separate CreditFresh / MoneyKey

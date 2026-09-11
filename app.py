@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from excel_export import export_model
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
     cumulative_default_pct,
@@ -209,9 +210,20 @@ initialize()
 row_count, triangle, fits = load_vintage_data()
 with st.sidebar:
     st.markdown(
-        '<div class="brand"><span>✦</span> LendSight</div><a class="navitem active" href="#forecasting">▥ &nbsp; Forecasting</a><a class="navitem" href="#monthly-forecast-schedule">▤ &nbsp; Monthly schedule</a><a class="navitem" href="#vintage-analysis">◈ &nbsp; Vintage analysis</a><a class="navitem" href="#model-assumptions">⚙ &nbsp; Model assumptions</a><div class="side-note">Planning prototype<br>Synthetic loan history<br>Illustrative opening portfolio</div>',
-        unsafe_allow_html=True,
+        '<div class="brand"><span>✦</span> LendSight</div>', unsafe_allow_html=True
     )
+    section = st.radio(
+        "Navigation",
+        ["Forecasting", "Monthly schedule", "Vintage analysis", "Model assumptions"],
+        key="navigation",
+        label_visibility="collapsed",
+    )
+    st.caption(
+        "Synthetic history. User-supplied opening CLAB; assumed product split and age mix."
+    )
+st.session_state.setdefault("driver_source", "Manual assumptions")
+mode = st.session_state["driver_source"]
+historical = mode == "Historical vintage"
 
 st.markdown(
     '<h1 id="forecasting">CLAB Forecast — Driver-Based Revenue Model</h1>',
@@ -238,303 +250,377 @@ toolbar[6].markdown(
 )
 selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
 focus = toolbar[7].number_input("KPI month", 1, horizon, 1, key=f"focus_{horizon}")
-with st.container(border=True, key="driver_panel"):
-    driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
-    driver_title.subheader("Forecast Drivers")
-    driver_note.caption(
-        "$639M end-Q2 CLAB treated as gross performing loans. Initial 40% / 60% product split and age mix are assumptions."
-    )
-    edit = (
-        driver_product.selectbox(
-            "Edit product drivers",
-            selected,
-            key="edit_product",
-            label_visibility="collapsed",
+if section == "Forecasting":
+    with st.container(border=True, key="driver_panel"):
+        driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
+        driver_title.subheader("Forecast Drivers")
+        driver_note.caption(
+            "$639M end-Q2 CLAB treated as gross performing loans. Initial 40% / 60% product split and age mix are assumptions."
         )
-        if view == "Combined"
-        else view
-    )
-    p = f"driver_{edit}_"
-    cols = st.columns([1, 1, 1, 1.2, 1.15])
-
-    def number(col, label, field, minimum, maximum, step):
-        return col.number_input(
-            label, minimum, maximum, step=step, key=p + field, on_change=custom
-        )
-
-    with cols[0]:
-        st.markdown("**◈ Volume Drivers**")
-        number(st, "Applications / month", "apps", 0, 500000, 500)
-        number(st, "Monthly growth (%)", "growth", -20.0, 20.0, 0.5)
-        with st.expander("Seasonality · 12 months"):
-            for m in range(12):
-                number(st, f"Month {m+1} multiplier", f"season_{m}", 0.5, 1.5, 0.1)
-    with cols[1]:
-        st.markdown("**♧ Underwriting**")
-        number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
-        number(st, "Average loan size ($)", "size", 100, 100000, 100)
-        number(st, "Loan term (months)", "term", 1, 60, 1)
-    with cols[2]:
-        st.markdown("**◇ Yield & Pricing**")
-        number(st, "Annual yield (%)", "yield", 0.0, 200.0, 1.0)
-        st.caption("Yield also determines the contractual amortization schedule.")
-        st.caption("Existing loans earn in month 1. New loans earn from month 2.")
-    with cols[3]:
-        st.markdown("**◒ Credit Curve**")
-        mode = st.selectbox(
-            "Default curve source",
-            ["Manual assumptions", "Historical vintage"],
-            key="driver_source",
-        )
-        historical = mode == "Historical vintage"
-        number(st, "Default-rate stress (%)", "stress", -100.0, 100.0, 5.0)
-        with st.expander("Manual curve assumptions"):
-            st.number_input(
-                "Lifetime default rate (%)",
-                0.0,
-                50.0,
-                step=1.0,
-                key=p + "rate",
-                disabled=historical,
-                on_change=custom,
+        edit = (
+            driver_product.selectbox(
+                "Edit product drivers",
+                selected,
+                key="edit_product",
+                label_visibility="collapsed",
             )
-            st.number_input(
-                "Days to default",
-                1,
-                365,
-                key=p + "days",
-                disabled=historical,
-                on_change=custom,
+            if view == "Combined"
+            else view
+        )
+        p = f"driver_{edit}_"
+        cols = st.columns([1, 1, 1, 1.2, 1.15])
+
+        def number(col, label, field, minimum, maximum, step):
+            return col.number_input(
+                label, minimum, maximum, step=step, key=p + field, on_change=custom
             )
-    with cols[4]:
-        st.markdown("**▧ Opening Portfolio**")
-        number(
-            st, "Opening gross CLAB ($)", "opening", 0.0, 1_000_000_000.0, 1_000_000.0
-        )
-        st.selectbox(
-            "Opening age mix",
-            ["Even balance by MOB (assumed)", "Single cohort at specified MOB"],
-            key=p + "age_mix",
-            on_change=custom,
-        )
-        # A term reduction can invalidate an existing age. Clamp visibly before rendering.
-        if st.session_state[p + "age"] >= st.session_state[p + "term"]:
-            st.session_state[p + "age"] = st.session_state[p + "term"] - 1
-            st.caption("Opening age adjusted to stay within the new loan term.")
-        if st.session_state[p + "age_mix"] == "Single cohort at specified MOB":
+
+        with cols[0]:
+            st.markdown("**◈ Volume Drivers**")
+            number(st, "Applications / month", "apps", 0, 500000, 500)
+            number(st, "Monthly growth (%)", "growth", -20.0, 20.0, 0.5)
+            with st.expander("Seasonality · 12 months"):
+                for m in range(12):
+                    number(st, f"Month {m+1} multiplier", f"season_{m}", 0.5, 1.5, 0.1)
+        with cols[1]:
+            st.markdown("**♧ Underwriting**")
+            number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
+            number(st, "Average loan size ($)", "size", 100, 100000, 100)
+            number(st, "Loan term (months)", "term", 1, 60, 1)
+        with cols[2]:
+            st.markdown("**◇ Yield & Pricing**")
+            number(st, "Annual yield (%)", "yield", 0.0, 200.0, 1.0)
+            st.caption("Yield also determines the contractual amortization schedule.")
+            st.caption("Existing loans earn in month 1. New loans earn from month 2.")
+        with cols[3]:
+            st.markdown("**◒ Credit Curve**")
+            mode = st.selectbox(
+                "Default curve source",
+                ["Manual assumptions", "Historical vintage"],
+                key="driver_source",
+            )
+            historical = mode == "Historical vintage"
+            number(st, "Default-rate stress (%)", "stress", -100.0, 100.0, 5.0)
+            with st.expander("Manual curve assumptions"):
+                st.number_input(
+                    "Lifetime default rate (%)",
+                    0.0,
+                    50.0,
+                    step=1.0,
+                    key=p + "rate",
+                    disabled=historical,
+                    on_change=custom,
+                )
+                st.number_input(
+                    "Days to default",
+                    1,
+                    365,
+                    key=p + "days",
+                    disabled=historical,
+                    on_change=custom,
+                )
+        with cols[4]:
+            st.markdown("**▧ Opening Portfolio**")
             number(
-                st, "Opening age (MOB)", "age", 0, st.session_state[p + "term"] - 1, 1
+                st,
+                "Opening gross CLAB ($)",
+                "opening",
+                0.0,
+                1_000_000_000.0,
+                1_000_000.0,
             )
-        st.caption(
-            "Opening reserve = remaining expected losses. New-loan provision: at origination."
-        )
+            st.selectbox(
+                "Opening age mix",
+                ["Even balance by MOB (assumed)", "Single cohort at specified MOB"],
+                key=p + "age_mix",
+                on_change=custom,
+            )
+            # A term reduction can invalidate an existing age. Clamp visibly before rendering.
+            if st.session_state[p + "age"] >= st.session_state[p + "term"]:
+                st.session_state[p + "age"] = st.session_state[p + "term"] - 1
+                st.caption("Opening age adjusted to stay within the new loan term.")
+            if st.session_state[p + "age_mix"] == "Single cohort at specified MOB":
+                number(
+                    st,
+                    "Opening age (MOB)",
+                    "age",
+                    0,
+                    st.session_state[p + "term"] - 1,
+                    1,
+                )
+            st.caption(
+                "Opening reserve = remaining expected losses. New-loan provision: at origination."
+            )
 
 all_inputs = {product: args(product, historical) for product in PRODUCT_DEFAULTS}
 forecasts = {product: forecast_clab_v2(**a) for product, a in all_inputs.items()}
 df = sum((forecasts[product].drop(columns="month") for product in selected))
 df.insert(0, "month", np.arange(1, horizon + 1))
 current = df.iloc[focus - 1]
-cards = st.columns(6)
-for col, (field, label, tint) in zip(
-    cards,
-    [
-        ("originations", "Originations", ""),
-        ("ending_gross_clab", "Gross CLAB", ""),
-        ("net_clab", "Net CLAB", ""),
-        ("charge_offs", "Charge-offs", "red"),
-        ("revenue", "Monthly Revenue", "green"),
-        ("net_revenue", "Net Revenue", "green"),
-    ],
-):
-    col.markdown(
-        f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-value">{_fmt_dollar_scaled(current[field])}</div><div class="kpi-note">Forecast month {focus}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-left, right = st.columns([1.1, 1])
-with left, st.container(border=True, key="revenue_panel"):
-    st.subheader("Monthly Revenue Schedule")
-    fig = go.Figure()
-    for field, label, color in [
-        ("revenue", "Revenue", "#00ad60"),
-        ("net_revenue", "Net revenue", "#111f65"),
-    ]:
-        fig.add_trace(
-            go.Scatter(
-                x=df.month,
-                y=df[field],
-                name=label,
-                line=dict(
-                    color=color,
-                    width=3,
-                    dash="dash" if field == "net_revenue" else "solid",
-                ),
-            )
-        )
-    fig.add_trace(
-        go.Bar(
-            x=df.month,
-            y=df.new_provisions,
-            name="Provision expense",
-            marker_color="#f34c60",
-            opacity=0.7,
-        )
-    )
-    st.plotly_chart(chart(fig, "$ / month"), width="stretch")
-    opening = df.iloc[0]
-    st.markdown(
-        f'<div class="note">Month 1 earns on {_fmt_dollar_scaled(opening.beginning_gross_clab)} of opening loans, less charge-offs. Its existing reserve is carried forward.</div>',
-        unsafe_allow_html=True,
-    )
-with right, st.container(border=True, key="curve_panel"):
-    st.subheader("Default Curve Overlay")
-    fig = go.Figure()
-    for product in selected:
-        hist = triangle[triangle["product"] == product]
-        for i, (_, cohort) in enumerate(hist.groupby("origination_month")):
-            fig.add_trace(
-                go.Scatter(
-                    x=cohort.months_on_book,
-                    y=cohort.cum_default_pct,
-                    mode="lines",
-                    line=dict(color="rgba(224,147,147,.20)", width=1),
-                    name="Individual vintages",
-                    showlegend=i == 0 and product == selected[0],
-                    hoverinfo="skip",
-                )
-            )
-        ages = np.arange(max(all_inputs[product]["term_months"], 24) + 1)
-        for hist_mode, name, color, dash in [
-            (True, "Historical fitted", "#172468", "solid"),
-            (False, "Manual", "#348ad2", "dash"),
-        ]:
-            a = args(product, hist_mode)
-            fig.add_trace(
-                go.Scatter(
-                    x=ages,
-                    y=cumulative_default_pct(
-                        ages, a["midpoint_months"], a["total_default_rate_pct"]
-                    ),
-                    name=f"{product} · {name}",
-                    line=dict(color=color, width=2.5, dash=dash),
-                )
-            )
-    chart(fig, "Cumulative default %")
-    fig.update_xaxes(title="Months on book (MOB)")
-    st.plotly_chart(fig, width="stretch")
+manual_forecasts = {
+    product: forecast_clab_v2(**args(product, False)) for product in selected
+}
+manual_revenue = sum(f.revenue.sum() for f in manual_forecasts.values())
+manual_provision = sum(f.new_provisions.sum() for f in manual_forecasts.values())
+st.success(
+    f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
+)
+if historical:
     st.caption(
-        f"Applied: {mode} + product stress · {row_count:,} historical records · Censored vintage fit"
-    )
-    st.button(
-        "Apply historical curve",
-        on_click=apply_historical,
-        disabled=historical,
-        width="stretch",
-    )
-
-with st.container(border=True, key="schedule_panel"):
-    st.markdown(
-        '<h3 id="monthly-forecast-schedule">Monthly Forecast Schedule</h3>',
-        unsafe_allow_html=True,
-    )
-    summary = df[
-        [
-            "month",
-            "applications",
-            "originations",
-            "ending_gross_clab",
-            "charge_offs",
-            "ending_reserve",
-            "revenue",
-            "new_provisions",
-            "net_revenue",
-        ]
-    ].copy()
-    approved = sum(
-        forecasts[product].originations / all_inputs[product]["avg_loan_size"]
-        for product in selected
-    )
-    summary.insert(
-        2,
-        "Approval %",
-        np.divide(
-            approved,
-            df.applications,
-            out=np.zeros(len(df)),
-            where=df.applications.to_numpy() != 0,
-        )
-        * 100,
-    )
-    table(summary)
-    download, details = st.columns([1, 4])
-    download.download_button(
-        "Download forecast",
-        df.to_csv(index=False),
-        "clab-forecast.csv",
-        "text/csv",
-        width="stretch",
-    )
-    details.caption(
-        f"Horizon revenue {_fmt_dollar_scaled(df.revenue.sum())} · Provision expense {_fmt_dollar_scaled(df.new_provisions.sum())} · Net revenue {_fmt_dollar_scaled(df.net_revenue.sum())}".replace(
+        f"Historical vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
             "$", r"\$"
         )
     )
-    with st.expander("Full balance reconciliation & quarterly reporting"):
-        period = st.radio("Table period", ["Monthly", "Quarterly"], horizontal=True)
-        table(df if period == "Monthly" else aggregate_to_quarterly(df))
-        if period == "Quarterly" and horizon % 3:
-            st.caption(
-                "Only complete quarters shown; monthly schedule includes the remaining months."
-            )
-        st.download_button(
-            "Download assumptions",
-            json.dumps(
-                {
-                    "source": mode,
-                    "scenario": st.session_state.get("scenario", "Base"),
-                    "products": all_inputs,
-                },
-                indent=2,
-            ),
-            "assumptions.json",
-            "application/json",
+if section == "Forecasting":
+    cards = st.columns(6)
+    for col, (field, label, tint) in zip(
+        cards,
+        [
+            ("originations", "Originations", ""),
+            ("ending_gross_clab", "Gross CLAB", ""),
+            ("net_clab", "Net CLAB", ""),
+            ("charge_offs", "Charge-offs", "red"),
+            ("revenue", "Monthly Revenue", "green"),
+            ("net_revenue", "Net Revenue", "green"),
+        ],
+    ):
+        col.markdown(
+            f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-value">{_fmt_dollar_scaled(current[field])}</div><div class="kpi-note">Forecast month {focus}</div></div>',
+            unsafe_allow_html=True,
         )
 
-st.markdown('<h3 id="vintage-analysis">Vintage Analysis</h3>', unsafe_allow_html=True)
-with st.expander("Historical cohort triangle"):
-    product = st.selectbox("Historical product", list(PRODUCT_DEFAULTS))
-    pivot = triangle[triangle["product"] == product].pivot(
-        index="origination_month", columns="months_on_book", values="cum_default_pct"
-    )
-    st.plotly_chart(
-        chart(
-            go.Figure(
-                go.Heatmap(
-                    z=pivot.values,
-                    x=pivot.columns,
-                    y=pivot.index,
-                    colorscale="Blues",
-                    hoverongaps=False,
+    left, right = st.columns([1.1, 1])
+    with left, st.container(border=True, key="revenue_panel"):
+        st.subheader("Monthly Revenue Schedule")
+        fig = go.Figure()
+        for field, label, color in [
+            ("revenue", "Revenue", "#00ad60"),
+            ("net_revenue", "Net revenue", "#111f65"),
+        ]:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.month,
+                    y=df[field],
+                    name=label,
+                    line=dict(
+                        color=color,
+                        width=3,
+                        dash="dash" if field == "net_revenue" else "solid",
+                    ),
                 )
+            )
+        fig.add_trace(
+            go.Bar(
+                x=df.month,
+                y=df.new_provisions,
+                name="Provision expense",
+                marker_color="#f34c60",
+                opacity=0.7,
+            )
+        )
+        st.plotly_chart(chart(fig, "$ / month"), width="stretch")
+        opening = df.iloc[0]
+        st.markdown(
+            f'<div class="note">Month 1 earns on {_fmt_dollar_scaled(opening.beginning_gross_clab)} of opening loans, less charge-offs. Its existing reserve is carried forward.</div>',
+            unsafe_allow_html=True,
+        )
+        runoff = current.principal_repaid + current.charge_offs
+        st.caption(
+            f"Month {focus}: new originations {_fmt_dollar_scaled(current.originations)} vs repayments {_fmt_dollar_scaled(current.principal_repaid)} and charge-offs {_fmt_dollar_scaled(current.charge_offs)}. Gross CLAB {'falls' if runoff>current.originations else 'rises'} by {_fmt_dollar_scaled(abs(current.originations-runoff))}. Revenue follows the earning balance, not the opening $639M forever.".replace(
+                "$", r"\$"
+            )
+        )
+    with right, st.container(border=True, key="curve_panel"):
+        st.subheader("Default Curve Overlay")
+        fig = go.Figure()
+        for product in selected:
+            hist = triangle[triangle["product"] == product]
+            for i, (_, cohort) in enumerate(hist.groupby("origination_month")):
+                fig.add_trace(
+                    go.Scatter(
+                        x=cohort.months_on_book,
+                        y=cohort.cum_default_pct,
+                        mode="lines",
+                        line=dict(color="rgba(224,147,147,.20)", width=1),
+                        name="Individual vintages",
+                        showlegend=i == 0 and product == selected[0],
+                        hoverinfo="skip",
+                    )
+                )
+            ages = np.arange(max(all_inputs[product]["term_months"], 24) + 1)
+            for hist_mode, name, color, dash in [
+                (True, "Historical fitted", "#172468", "solid"),
+                (False, "Manual", "#348ad2", "dash"),
+            ]:
+                a = args(product, hist_mode)
+                fig.add_trace(
+                    go.Scatter(
+                        x=ages,
+                        y=cumulative_default_pct(
+                            ages, a["midpoint_months"], a["total_default_rate_pct"]
+                        ),
+                        name=f"{product} · {name}"
+                        + (
+                            " — APPLIED" if hist_mode == historical else " — comparison"
+                        ),
+                        line=dict(
+                            color=color,
+                            width=4 if hist_mode == historical else 1.5,
+                            dash="solid" if hist_mode == historical else "dot",
+                        ),
+                    )
+                )
+        chart(fig, "Cumulative default %")
+        fig.update_xaxes(title="Months on book (MOB)")
+        st.plotly_chart(fig, width="stretch")
+        st.caption(
+            f"Applied: {mode} + product stress · {row_count:,} historical records · Censored vintage fit"
+        )
+        for product in selected:
+            a = all_inputs[product]
+            st.caption(
+                f"{product}: applied lifetime default {a['total_default_rate_pct']:.2f}%; midpoint {a['midpoint_months']:.2f} MOB (including stress)."
+            )
+        st.button(
+            "Apply historical curve",
+            on_click=apply_historical,
+            disabled=historical,
+            width="stretch",
+        )
+
+if section in ("Forecasting", "Monthly schedule"):
+    with st.container(border=True, key="schedule_panel"):
+        st.markdown(
+            '<h3 id="monthly-forecast-schedule">Monthly Forecast Schedule</h3>',
+            unsafe_allow_html=True,
+        )
+        summary = df[
+            [
+                "month",
+                "applications",
+                "originations",
+                "ending_gross_clab",
+                "charge_offs",
+                "ending_reserve",
+                "revenue",
+                "new_provisions",
+                "net_revenue",
+            ]
+        ].copy()
+        approved = sum(
+            forecasts[product].originations / all_inputs[product]["avg_loan_size"]
+            for product in selected
+        )
+        summary.insert(
+            2,
+            "Approval %",
+            np.divide(
+                approved,
+                df.applications,
+                out=np.zeros(len(df)),
+                where=df.applications.to_numpy() != 0,
+            )
+            * 100,
+        )
+        table(summary)
+        download, details = st.columns([1, 4])
+        snapshot = {
+            "source": mode,
+            "scenario": st.session_state.get("scenario", "Base"),
+            "view": view,
+            "products": {
+                product: {
+                    "active": all_inputs[product],
+                    "manual_rate_pct": st.session_state[f"driver_{product}_rate"],
+                    "manual_midpoint": st.session_state[f"driver_{product}_days"] / 30,
+                    "historical_rate_pct": fits[product]["total_default_rate_pct"],
+                    "historical_midpoint": fits[product]["midpoint_months"],
+                    "stress_pct": st.session_state[f"driver_{product}_stress"],
+                }
+                for product in PRODUCT_DEFAULTS
+            },
+        }
+        download.download_button(
+            "Excel model",
+            export_model(snapshot),
+            "CLAB-revenue-model.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+        )
+        st.caption(
+            "Excel includes editable blue inputs, linked formulas, full cohort calculations and balance checks. 36-month build; horizon totals match the selected forecast. Excel recalculates when opened."
+        )
+        details.caption(
+            f"Horizon revenue {_fmt_dollar_scaled(df.revenue.sum())} · Provision expense {_fmt_dollar_scaled(df.new_provisions.sum())} · Net revenue {_fmt_dollar_scaled(df.net_revenue.sum())}".replace(
+                "$", r"\$"
+            )
+        )
+        with st.expander("Full balance reconciliation & quarterly reporting"):
+            period = st.radio("Table period", ["Monthly", "Quarterly"], horizontal=True)
+            table(df if period == "Monthly" else aggregate_to_quarterly(df))
+            if period == "Quarterly" and horizon % 3:
+                st.caption(
+                    "Only complete quarters shown; monthly schedule includes the remaining months."
+                )
+            st.download_button(
+                "Download assumptions",
+                json.dumps(
+                    {
+                        "source": mode,
+                        "scenario": st.session_state.get("scenario", "Base"),
+                        "products": all_inputs,
+                    },
+                    indent=2,
+                ),
+                "assumptions.json",
+                "application/json",
+            )
+
+if section == "Vintage analysis":
+    st.markdown(
+        '<h3 id="vintage-analysis">Vintage Analysis</h3>', unsafe_allow_html=True
+    )
+    with st.expander("Historical cohort triangle", expanded=True):
+        product = st.selectbox("Historical product", list(PRODUCT_DEFAULTS))
+        pivot = triangle[triangle["product"] == product].pivot(
+            index="origination_month",
+            columns="months_on_book",
+            values="cum_default_pct",
+        )
+        st.plotly_chart(
+            chart(
+                go.Figure(
+                    go.Heatmap(
+                        z=pivot.values,
+                        x=pivot.columns,
+                        y=pivot.index,
+                        colorscale="Blues",
+                        hoverongaps=False,
+                    )
+                ),
+                "Origination month",
             ),
-            "Origination month",
-        ),
-        width="stretch",
+            width="stretch",
+        )
+        st.caption(
+            "Blank cells are unobserved ages. The separate CreditFresh / MoneyKey 2M-row pipeline remains in vintage_app.py; it is not the source for these forecast products."
+        )
+if section == "Model assumptions":
+    st.markdown(
+        '<h3 id="model-assumptions">Model Assumptions</h3>', unsafe_allow_html=True
     )
-    st.caption(
-        "Blank cells are unobserved ages. The separate CreditFresh / MoneyKey 2M-row pipeline remains in vintage_app.py; it is not the source for these forecast products."
-    )
-st.markdown('<h3 id="model-assumptions">Model Assumptions</h3>', unsafe_allow_html=True)
-with st.expander("Opening book, provision timing & scenario definitions"):
-    st.write(
-        "The initial total opening CLAB is $639M at end-Q2, supplied by the user. The initial 40% Short-Term / 60% Installment allocation is illustrative. With age mix unknown, the default distributes each product's current balance evenly across MOB 0 through term minus 1. Alternatively, select a single cohort age. Remaining principal and default risk are conditional on survival to each age. Actual cohort data should replace these assumptions when available."
-    )
-    st.write(
-        "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
-    )
-    st.write(
-        "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. No prepayments or recoveries are modeled."
-    )
-    st.write(
-        "Scenario buttons set growth, approval and default-rate stress; other assumptions are retained. Base: 0% growth / default approval / 0% stress. Upside: +2% monthly growth / +3 percentage points approval / −20% default rate. Downside: −2% growth / −3 percentage points approval / +20% default rate. Stress scales default probability, not loss severity."
-    )
+    with st.expander(
+        "Opening book, provision timing & scenario definitions", expanded=True
+    ):
+        st.write(
+            "The initial total opening CLAB is $639M at end-Q2, supplied by the user. The initial 40% Short-Term / 60% Installment allocation is illustrative. With age mix unknown, the default distributes each product's current balance evenly across MOB 0 through term minus 1. Alternatively, select a single cohort age. Remaining principal and default risk are conditional on survival to each age. Actual cohort data should replace these assumptions when available."
+        )
+        st.write(
+            "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
+        )
+        st.write(
+            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. No prepayments or recoveries are modeled."
+        )
+        st.write(
+            "Scenario buttons set growth, approval and default-rate stress; other assumptions are retained. Base: 0% growth / default approval / 0% stress. Upside: +2% monthly growth / +3 percentage points approval / −20% default rate. Downside: −2% growth / −3 percentage points approval / +20% default rate. Stress scales default probability, not loss severity."
+        )

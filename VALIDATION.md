@@ -1,6 +1,6 @@
 # Validation — 11 September 2026
 
-**15 tests passed** after the opening-portfolio and dashboard revision.
+**16 tests passed** after the opening-portfolio, navigation and Excel revision.
 
 - Original empty-book forecast matches a fixture captured from commit 0c82eb7.
 - Opening cohorts at MOB 0, MOB 3 and an even age mix repay fully and exhaust
@@ -13,6 +13,15 @@
 - Historical/manual curve switching restores manual assumptions.
 - Growth presets, reset, partial quarters, term-one loans and invalid ages tested.
 - The separate vintage app starts without a Streamlit exception.
+- All four navigation pages preserve edited drivers and the selected curve.
+
+The exported historical-case Excel model was independently recalculated with
+Artifact Tool: 2,757 financial values reconcile to the Python engine (maximum
+dollar difference 0.000000462). Editing applications doubles originations;
+switching to manual credit inputs changes the applied curve. Formula error
+scan found none. Workbook formatting was visually checked using saved cell
+values and styles after the primary renderer returned blank images. Native
+desktop Excel was not available for an additional application-level check.
 
 Default combined month 1, using the stated illustrative split and age mix:
 revenue $38.60M; new provisions $2.46M; net revenue $36.14M.
