@@ -1,0 +1,46 @@
+{
+  "generation": {
+    "run_at": "2026-09-11T15:24:26",
+    "total_rows": 2000000,
+    "generation_seconds": 1.3205657005310059,
+    "loan_id_unique": true,
+    "vintages": 24,
+    "vintage_range": [
+      "2024-07",
+      "2026-06"
+    ],
+    "product_mix_pct": {
+      "CreditFresh": {
+        "observed": 58.0002,
+        "target": 58.0
+      },
+      "MoneyKey": {
+        "observed": 41.9998,
+        "target": 42.0
+      }
+    },
+    "default_rate_vs_target": {
+      "CreditFresh": {
+        "observed": 0.1998389660725308,
+        "target": 0.2
+      },
+      "MoneyKey": {
+        "observed": 0.352260010761956,
+        "target": 0.36
+      }
+    }
+  },
+  "triangle": {
+    "run_at": "2026-09-11T15:24:39",
+    "rows_loaded": 2000000,
+    "load_seconds": 0.19935941696166992,
+    "triangle_build_seconds": 11.21558141708374,
+    "observation_date": "2026-06",
+    "triangle_cells": 324,
+    "cells_excluded_by_censoring": 60,
+    "sql_queries": {
+      "defaults_by_mob": "SELECT\n    product,\n    vintage,\n    default_mob AS mob,\n    COUNT(*) AS loans_defaulted_at_mob,\n    SUM(ticket) AS dollars_defaulted_at_mob\nFROM loans\nWHERE default_mob >= 0\nGROUP BY product, vintage, default_mob",
+      "originations_by_vintage": "SELECT product, vintage, COUNT(*) AS loan_count, SUM(ticket) AS originations\nFROM loans\nGROUP BY product, vintage"
+    }
+  }
+}
