@@ -116,6 +116,9 @@ def cached_schedules(snapshot):
     combined[23] = np.divide(
         combined[24] * 12, earning, out=np.zeros(36), where=earning != 0
     )
+    combined[47] = builds["Short-Term"][24] if "Short-Term" in selected else np.zeros(36)
+    combined[48] = builds["Installment"][24] if "Installment" in selected else np.zeros(36)
+    combined[49] = combined[47] + combined[48]
     result = {}
     for sheet, rows in [
         (1, combined),

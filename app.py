@@ -557,6 +557,8 @@ if section in ("Forecasting", "Monthly schedule"):
         with st.expander("How reserve and charge-offs reconcile"):
             st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
             st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
+        for product in selected:
+            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", forecasts[product].revenue)
         horizontal = summary.set_index("month").rename(columns=LABELS).T
         horizontal.columns = [f"Month {m}" for m in summary.month]
         horizontal.index.name = "Metric"

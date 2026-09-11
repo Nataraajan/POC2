@@ -24,7 +24,7 @@ def render_overlay(all_inputs):
     st.caption('Default-rate assumption → generated loans → censored triangle → derived curve → fitted forecast curve → day-one PLL. Synthetic experiment based on your updated vintage app.')
     with st.form('overlay_experiment'):
         cols = st.columns(2)
-        rates = {p: cols[i].slider(f'{p} lifetime default (%)', 0.0, 50.0, float(d['lifetime_default']*100), .5) for i,(p,d) in enumerate(PRODUCTS.items())}
+        rates = {p: cols[i].number_input(f'{p} lifetime default (%)', 0.0, 50.0, float(d['lifetime_default']*100), .5, format='%.1f') for i,(p,d) in enumerate(PRODUCTS.items())}
         run = st.form_submit_button('Generate vintage curves', type='primary')
     if run:
         with st.spinner('Generating 100,000 loans and building the censored curves…'):

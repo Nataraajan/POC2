@@ -203,6 +203,7 @@ def test_horizontal_schedule_reconciles():
     at = app()
     schedule = at.dataframe[0].value
     assert list(schedule.columns) == [f"Month {m}" for m in range(1, 25)]
+    np.testing.assert_allclose(schedule.loc["Short-Term revenue"] + schedule.loc["Installment revenue"], schedule.loc["Revenue"])
     np.testing.assert_allclose(schedule.loc["Revenue"].to_numpy()*1e6, full(at).Revenue)
     np.testing.assert_allclose(schedule.loc["Applications"].to_numpy(), full(at).Applications)
 
@@ -234,7 +235,7 @@ def test_vintage_experiment_applies_to_forecast():
     at = app()
     before = full(at).copy()
     at.radio(key="navigation").set_value("Vintage overlay").run()
-    at.slider[0].set_value(35.0)
+    next(n for n in at.number_input if n.label == "CreditFresh lifetime default (%)").set_value(35.0)
     next(b for b in at.button if b.label == "Generate vintage curves").click().run(timeout=60)
     assert not at.exception
     at.selectbox(key="overlay_map_Short-Term").set_value("CreditFresh").run()

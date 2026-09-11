@@ -234,7 +234,7 @@ def render_vintage_analysis():
     live_product = pick_col.radio("Product to tune", list(PRODUCT_COLORS), horizontal=True, key="live_product")
     baseline_pct = GENERATOR_PRODUCTS[live_product]["lifetime_default"] * 100
     # One slider key per product, so each starts at (and remembers) its own product's setting.
-    live_rate_pct = rate_col.slider(f"{live_product} lifetime default rate (%)", 0.0, 50.0, value=baseline_pct, step=0.5,
+    live_rate_pct = rate_col.number_input(f"{live_product} lifetime default rate (%)", 0.0, 50.0, value=baseline_pct, step=0.5,
                                     key=f"live_rate_{live_product}",
                                     help=f"{live_product}'s baseline in the generator is {fmt_rate(baseline_pct)}.")
 
