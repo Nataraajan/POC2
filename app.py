@@ -51,7 +51,7 @@ h3{font-size:1.05rem!important;padding:0 0 .45rem!important}
 .badge{display:inline-block;background:#e2f7ed;color:#04824e;border-radius:20px;padding:7px 14px;font-size:.77rem;font-weight:650}
 .note{background:#e4f8ef;color:#067c4a;padding:9px 12px;border-radius:7px;font-size:.8rem}
 .kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:12px 0 28px}.kpi{box-sizing:border-box;min-width:0;overflow-wrap:anywhere;border:1px solid #e1eaf8;border-radius:10px;padding:12px;background:white;min-height:98px}
-.kpi-label{font-size:.78rem;color:#30456d}.kpi-value{font-size:1.6rem;font-weight:750;color:#0a225e;margin:3px 0}
+.kpi-years{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.kpi-period+ .kpi-period{border-left:1px solid #dce5ef;padding-left:16px}.kpi-footer{border-top:1px solid #e3eaf3;margin-top:14px;padding-top:10px;font-size:.78rem;color:#465d7a}.kpi{padding:20px!important;box-shadow:0 4px 16px #10284606}.kpi.hero{background:#112c50;border-color:#112c50}.kpi.hero .kpi-label,.kpi.hero .kpi-value{color:white}.kpi.hero .kpi-note,.kpi.hero .kpi-footer{color:#c6d8ef}.kpi.hero .kpi-footer{border-color:#345071}.kpi-label{font-size:.78rem;color:#30456d}.kpi-value{font-size:1.6rem;font-weight:750;color:#0a225e;margin:3px 0}
 .kpi-note{font-size:.72rem;color:#647694}.kpi.green{background:#f0fcf7;border-color:#d4f2e3}.kpi.green .kpi-value{color:#00a35b}
 .kpi.red{background:#fff6f7;border-color:#ffe0e5}.kpi.red .kpi-value{color:#e92746}
 div[data-testid="stHorizontalBlock"]{gap:.8rem}
@@ -376,12 +376,12 @@ if section == "Forecasting":
     st.subheader("Annual forecast KPIs")
     cards = []
     for field, label, tint, balance in [
+        ("revenue", "Revenue", "hero", False),
+        ("new_provisions", "PLL / provision expense", "red", False),
+        ("net_revenue", "Net Revenue", "green", False),
         ("originations", "Originations", "", False),
         ("ending_gross_clab", "Gross CLAB", "", True),
         ("net_clab", "Net CLAB", "", True),
-        ("new_provisions", "PLL / provision expense", "red", False),
-        ("revenue", "Revenue", "green", False),
-        ("net_revenue", "Net Revenue", "green", False),
     ]:
         values = []
         for year in (1, 2):
@@ -391,14 +391,24 @@ if section == "Forecasting":
             note = "year-end" if balance else "annual total"
             if not complete:
                 note = "requires " + str(year*12) + " forecast months"
-            values.append(f'<div class="kpi-note">Year {year} · {note}</div><div class="kpi-value">{value}</div>')
-        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div>{"".join(values)}</div>')
+            values.append(f'<div class="kpi-period"><div class="kpi-note">Year {year} · {note}</div><div class="kpi-value">{value}</div></div>')
+        yearly = [df[(df.month > j*12) & (df.month <= (j+1)*12)] for j in range(2)]
+        if field == "new_provisions":
+            ratios = [f"{x.new_provisions.sum()/x.revenue.sum():.1%}" if len(x)==12 and x.revenue.sum()!=0 else "—" for x in yearly]
+            footer = f"PLL / revenue: Y1 {ratios[0]} · Y2 {ratios[1]}<br>Reported benchmark: 45–50% · calibration pending"
+        elif all(len(x)==12 for x in yearly):
+            totals = [x[field].iloc[-1] if balance else x[field].sum() for x in yearly]
+            change = f"{(totals[1]/totals[0]-1)*100:+.1f}%" if totals[0] else "—"
+            footer = f"Year 2 vs Year 1: {change}" + (" · closing balance" if balance else " · annual total")
+        else:
+            footer = "Extend horizon to 24 months for annual comparison"
+        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-years">{"".join(values)}</div><div class="kpi-footer">{footer}</div></div>')
     st.markdown('<div class="kpi-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
     st.caption("Year 1 = forecast months 1–12; Year 2 = months 13–24. Balances are year-end snapshots; all other KPIs are annual totals.")
 
     left, right = st.columns([1.1, 1])
     with left, st.container(border=True, key="revenue_panel"):
-        st.subheader("Monthly Revenue Schedule")
+        st.subheader("Monthly Revenue Trend")
         fig = go.Figure()
         for field, label, color in [
             ("revenue", "Revenue", "#00ad60"),
@@ -485,7 +495,7 @@ if section == "Forecasting":
         st.plotly_chart(fig, width="stretch")
         st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
         st.caption(
-            f"Applied: {mode} + product stress · {row_count:,} historical records · Censored vintage fit"
+            f"Applied: {mode} + product stress · {row_count:,} synthetic historical records · Original-loan-amount-weighted default curve"
         )
         for product in selected:
             a = all_inputs[product]
@@ -502,7 +512,7 @@ if section == "Forecasting":
 if section in ("Forecasting", "Monthly schedule"):
     with st.container(border=True, key="schedule_panel"):
         st.markdown(
-            '<h3 id="monthly-forecast-schedule">Monthly Forecast Schedule</h3>',
+            '<h3 id="monthly-forecast-schedule">Monthly Revenue & Forecast Schedule</h3>',
             unsafe_allow_html=True,
         )
         summary = df[
@@ -533,7 +543,14 @@ if section in ("Forecasting", "Monthly schedule"):
             )
             * 100,
         )
-        table(summary)
+        horizontal = summary.set_index("month").rename(columns=LABELS).T
+        horizontal.columns = [f"Month {m}" for m in summary.month]
+        horizontal.index.name = "Metric"
+        horizontal = horizontal.astype(float)
+        money_rows = [r for r in horizontal.index if r not in ("Applications", "Approval %")]
+        horizontal.loc[money_rows] /= 1_000_000
+        st.caption("Months run left to right · financial amounts in $ millions · applications are counts · approval is percent. Scroll horizontally for later months.")
+        st.dataframe(horizontal.style.format("{:,.2f}").format("{:,.0f}", subset=pd.IndexSlice[["Applications"], :]).format("{:.1f}%", subset=pd.IndexSlice[["Approval %"], :]), width="stretch", height=390)
         download, details = st.columns([1, 4])
         snapshot = {
             "source": mode,

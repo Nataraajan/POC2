@@ -77,3 +77,5 @@ python -m pytest tests -q
 See VALIDATION.md for checks and assumptions. The model remains a planning
 prototype; the supplied opening balance does not turn synthetic loan history
 or demo yields into company actuals.
+
+The executive cards lead with revenue, PLL and net revenue, with annual changes and the user-supplied 45–50% PLL/revenue benchmark. This benchmark is informational, not a forced forecast input. The monthly summary has months across columns and amounts in millions. Historical fitting uses derive_vintage_curves.py through dashboard_support.py: cumulative defaults are weighted by original loan amount, not actual written-off principal.

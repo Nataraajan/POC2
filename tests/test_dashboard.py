@@ -191,9 +191,17 @@ def test_annual_kpis_and_partial_year():
     at = app()
     cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
     assert "$421.20M" in cards  # 35.1M originations x 12, not a monthly KPI
-    assert cards.count("Year 1") == 6 and cards.count("Year 2") == 6
+    assert cards.count("Year 1 ·") == 6 and cards.count("Year 2 ·") == 6
     assert "PLL / provision expense" in cards
     assert "Charge-offs" not in cards
     at.number_input(key="driver_horizon").set_value(18).run()
     cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
     assert cards.count("requires 24 forecast months") == 6
+
+
+def test_horizontal_schedule_reconciles():
+    at = app()
+    schedule = at.dataframe[0].value
+    assert list(schedule.columns) == [f"Month {m}" for m in range(1, 25)]
+    np.testing.assert_allclose(schedule.loc["Revenue"].to_numpy()*1e6, full(at).Revenue)
+    np.testing.assert_allclose(schedule.loc["Applications"].to_numpy(), full(at).Applications)
