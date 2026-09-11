@@ -29,7 +29,7 @@ import sqlite3
 import numpy as np
 import pandas as pd
 
-from clab_forecast_engine import cumulative_default_pct
+from clab_forecast_engine_v2 import cumulative_default_pct
 from generate_loan_data import LOANS_CSV, PRODUCTS, true_cumulative_default_pct
 
 
