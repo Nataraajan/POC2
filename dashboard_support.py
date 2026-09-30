@@ -87,7 +87,7 @@ def load_vintage_data():
 
 PRODUCT_DEFAULTS = {
     "Short-Term": dict(
-        applications=30000,
+        applications=89286,
         approval_rate=30.0,
         avg_loan_size=1500.0,
         annual_yield=100.0,
@@ -97,7 +97,7 @@ PRODUCT_DEFAULTS = {
         color=RED,
     ),
     "Installment": dict(
-        applications=12000,
+        applications=35714,
         approval_rate=45.0,
         avg_loan_size=4000.0,
         annual_yield=55.0,

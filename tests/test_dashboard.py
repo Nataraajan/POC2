@@ -149,6 +149,7 @@ def test_growth_scenarios_reset_and_partial_quarter():
     np.testing.assert_allclose(full(at).Revenue.sum(), f.Revenue.iloc[:24].sum())
     next(b for b in at.button if b.label == "Reset").click().run()
     assert at.number_input(key="driver_horizon").value == 24
+    np.testing.assert_allclose(full(at).Applications, 375000)  # quarterly view survives Reset
     assert at.number_input(key="driver_Short-Term_opening_m").value == 255.6
 
 
@@ -193,7 +194,7 @@ def test_navigation_preserves_forecast():
 def test_annual_kpis_and_partial_year():
     at = app()
     cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
-    assert "$421.20M" in cards  # 35.1M originations x 12, not a monthly KPI
+    assert "$1,253.57M" in cards  # 104.4639M originations x 12
     assert cards.count("Year 1 ·") == 6 and cards.count("Year 2 ·") == 6
     assert "PLL / provision expense" in cards
     assert "Charge-offs" not in cards

@@ -51,3 +51,5 @@ The Excel export retains four segment builds, two loan-type aggregations and a m
 The exporter adapts the existing formula template at download time without adding a spreadsheet service to Streamlit. The assumptions JSON download now includes both source settings, original and applied curves, brand share and operating drivers. See `VALIDATION.md` for recalculation checks and limits.
 
 `generate_loan_data.py`, `derive_vintage_curves.py` and `loans.csv` retain the original standalone sigmoid-fitting demonstration. They are legacy examples, not inputs to the current dashboard or segment forecast.
+
+The default monthly application total is 125,000: 89,286 Short-Term and 35,714 Installment (the previous 5:2 application mix, rounded to whole applications). At unchanged approval rates and ticket sizes this produces $104.4639M monthly originations. These are illustrative volume assumptions. The equal-current-balance opening age mix causes heavy initial runoff; the opening book is not calibrated to a steady-state age distribution.

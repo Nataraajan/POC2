@@ -2,7 +2,7 @@
 
 The full suite contains 60 tests. Run `python -m pytest tests -q`.
 
-Full run after making Excel generation on demand: **60 passed in 27.61 seconds**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
+Full run after updating the monthly application preset to 125,000 combined: **60 passed in 28.77 seconds**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
 
 ## Verified behavior
 
