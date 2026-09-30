@@ -2,6 +2,7 @@
 
 import pandas as pd
 import streamlit as st
+from segments import LOAN_TERMS
 from generate_loan_data import PRODUCTS as HIST_PRODUCTS
 from derive_vintage_curves import (
     LOANS_CSV,
@@ -90,7 +91,7 @@ PRODUCT_DEFAULTS = {
         approval_rate=30.0,
         avg_loan_size=1500.0,
         annual_yield=100.0,
-        term_months=12,
+        term_months=LOAN_TERMS["Short-Term"],
         days_to_default=60,
         total_default_rate=12.0,
         color=RED,
@@ -100,7 +101,7 @@ PRODUCT_DEFAULTS = {
         approval_rate=45.0,
         avg_loan_size=4000.0,
         annual_yield=55.0,
-        term_months=24,
+        term_months=LOAN_TERMS["Installment"],
         days_to_default=150,
         total_default_rate=6.0,
         color=BLUE,

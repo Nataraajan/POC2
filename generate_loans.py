@@ -3,27 +3,22 @@ generate_loans.py
 
 Vectorized synthetic loan-level data generator. Designed to scale to
 2,000,000+ rows without a per-loan Python loop — the only loop is over the
-48 (product x vintage) combinations, which is trivial; everything within
+144 (segment x vintage) combinations, which is trivial; everything within
 each combination is real numpy array operations.
 
 This step produces default_mob as each loan's TRUE, full-term outcome.
 Right-censoring (restricting what's "observable" as of a given date) is
 applied later, when building the vintage triangle — NOT here. This file
-only needs to produce statistically correct ground-truth outcomes.
+produces illustrative synthetic outcomes, not calibrated company assumptions.
 """
 
 import numpy as np
 import pandas as pd
-from datetime import date
 import calendar
 
-RNG = np.random.default_rng(seed=42)
+from segments import SEGMENTS as PRODUCTS
 
-VINTAGES = pd.period_range("2023-07", "2026-06", freq="M")  # 36 months
-PRODUCTS = {
-    "CreditFresh": {"share": 0.58, "ticket": 1800.0, "term_months": 9, "lifetime_default": 0.20},
-    "MoneyKey": {"share": 0.42, "ticket": 700.0, "term_months": 5, "lifetime_default": 0.36},
-}
+VINTAGES = pd.period_range("2023-07", "2026-06", freq="M")
 SEASONALITY = {
     1: 0.88, 2: 0.90, 3: 1.00, 4: 1.02, 5: 1.04, 6: 1.08,
     7: 1.00, 8: 1.00, 9: 1.04, 10: 1.06, 11: 1.12, 12: 1.16,
@@ -31,69 +26,61 @@ SEASONALITY = {
 CURVE_K = 2.2  # exponential shape parameter
 
 
-def exponential_cum_curve(lifetime: float, term: int) -> np.ndarray:
+def exponential_cum_curve(lifetime: float, term: int, shape: float = CURVE_K) -> np.ndarray:
     """cum[k] for k=0..term. Hits exactly `lifetime` at k=term, by construction."""
     k = np.arange(0, term + 1)
-    return lifetime * (1 - np.exp(-CURVE_K * k / term)) / (1 - np.exp(-CURVE_K))
+    return lifetime * (1 - np.exp(-shape * k / term)) / (1 - np.exp(-shape))
 
 
-PAYOFF_DECAY_K = 2.5  # fixed shape constant — not a tunable input, mirrors CURVE_K's role
+PAYOFF_DECAY_K = 2.5  # default helper shape; each segment supplies its own value
 
 
-def payoff_timing_distribution(term: int) -> np.ndarray:
+def payoff_timing_distribution(term: int, shape: float = PAYOFF_DECAY_K) -> np.ndarray:
     """Probability distribution over payoff month (1..term) for loans that
     DON'T default — front-loaded (peaks early, decays toward term), using a
-    fixed decay shape, not a rate anyone has to guess. This is a genuine
+    chosen illustrative decay shape. This is a normalized
     timing distribution, not a rate: by construction it always sums to
     exactly 1.0, since every non-defaulting loan pays off SOMEWHERE by
     month `term` (that's the definition of not defaulting)."""
     months = np.arange(1, term + 1)
-    weights = np.exp(-PAYOFF_DECAY_K * months / term)
+    weights = np.exp(-shape * months / term)
     return weights / weights.sum()
 
 
 def generate(total_rows: int = 2_000_000, verbose: bool = True,
-             lifetime_default_overrides: dict = None) -> pd.DataFrame:
-    """
-    lifetime_default_overrides: optional dict like {"MoneyKey": 0.15} to
-    override that product's default PRODUCTS config for this run only —
-    used by the live-demo slider. Leaving this None (the default) preserves
-    exact existing behavior for the main 2M-row precompute path.
-    """
+             lifetime_default_overrides: dict = None, seed: int = 42) -> pd.DataFrame:
+    """Generate full-term outcomes. Overrides use exact segment names; seed is per run."""
+    if not isinstance(total_rows, int) or total_rows <= 0:
+        raise ValueError("total_rows must be a positive integer")
+    RNG = np.random.default_rng(seed)
     overrides = lifetime_default_overrides or {}
+    if set(overrides) - set(PRODUCTS):
+        raise ValueError("Default overrides must name an exact brand/loan-type segment")
+    if any(not np.isfinite(v) or not 0 <= v <= 1 for v in overrides.values()):
+        raise ValueError("Default overrides must lie between zero and one")
     # --- Step 1: monthly volume per product, seasonality-adjusted, rescaled to hit total_rows exactly ---
-    n_vintages = len(VINTAGES)
     raw_monthly_share = np.array([SEASONALITY[v.month] for v in VINTAGES])
     raw_monthly_share = raw_monthly_share / raw_monthly_share.sum()  # normalize to sum to 1 across vintages
-    target_per_vintage = np.round(raw_monthly_share * total_rows).astype(int)
+    target_per_vintage = np.floor(raw_monthly_share * total_rows).astype(int)
     # Rounding can leave us off by a few rows from the exact total — patch the last vintage.
     target_per_vintage[-1] += total_rows - target_per_vintage.sum()
 
     all_frames = []
-    seq_counters = {}
 
     for vintage_idx, vintage in enumerate(VINTAGES):
         vintage_total = target_per_vintage[vintage_idx]
         vintage_str = str(vintage)
-        yyyymm = vintage.year * 100 + vintage.month
         days_in_month = calendar.monthrange(vintage.year, vintage.month)[1]
 
+        counts = np.floor([vintage_total * c["share"] for c in PRODUCTS.values()]).astype(int)
+        counts[-1] += vintage_total - counts.sum()
         for product_idx, (product_name, cfg) in enumerate(PRODUCTS.items()):
-            # Round ONE product's count, derive the other as the exact
-            # remainder — rounding both shares independently can silently
-            # miss the vintage total by 1 (e.g. both rounding up).
-            if product_idx == 0:
-                n = int(round(vintage_total * cfg["share"]))
-                n_first_product = n
-            else:
-                n = vintage_total - n_first_product
+            n = counts[product_idx]
             if n == 0:
                 continue
-
-            product_code = 1 if product_name == "CreditFresh" else 2
-            seq_start = seq_counters.get((product_code, yyyymm), 0)
-            loan_id = product_code * 10**9 + yyyymm * 10**5 + np.arange(seq_start, seq_start + n)
-            seq_counters[(product_code, yyyymm)] = seq_start + n
+            # Global sequential IDs cannot collide even in multi-million-row runs.
+            seq_start = sum(len(frame) for frame in all_frames)
+            loan_id = np.arange(seq_start + 1, seq_start + n + 1)
 
             # Vectorized ticket size, +/-10% uniform noise
             ticket = cfg["ticket"] * RNG.uniform(0.9, 1.1, size=n)
@@ -104,9 +91,9 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True,
 
             # Per-vintage noise on lifetime default rate, then build this vintage's
             # own cumulative curve and derive default_mob for every loan in it at once.
-            vintage_lifetime = overrides.get(product_name, cfg["lifetime_default"]) * RNG.uniform(0.92, 1.08)
+            vintage_lifetime = min(1.0, overrides.get(product_name, cfg["lifetime_default"]) * RNG.uniform(0.92, 1.08))
             term = cfg["term_months"]
-            cum_curve = exponential_cum_curve(vintage_lifetime, term)
+            cum_curve = exponential_cum_curve(vintage_lifetime, term, cfg["default_k"])
             incremental = np.diff(cum_curve, prepend=0.0)  # inc[0..term], sums to vintage_lifetime
             # Categorical distribution over {default at mob 0, 1, ..., term, no default}
             probs = np.append(incremental, 1.0 - vintage_lifetime)
@@ -121,7 +108,7 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True,
             # For every loan that did NOT default, draw its payoff month from
             # the front-loaded payoff-timing distribution — vectorized the
             # same way as the default draw above, no per-loan loop.
-            payoff_dist = payoff_timing_distribution(term)
+            payoff_dist = payoff_timing_distribution(term, cfg["payoff_k"])
             payoff_cum_probs = np.cumsum(payoff_dist)
             payoff_cum_probs[-1] = 1.0  # guard against float drift
             payoff_draws = RNG.uniform(0, 1, size=n)
@@ -132,6 +119,8 @@ def generate(total_rows: int = 2_000_000, verbose: bool = True,
             all_frames.append(pd.DataFrame({
                 "loan_id": loan_id,
                 "product": product_name,
+                "brand": cfg["brand"],
+                "loan_type": cfg["loan_type"],
                 "vintage": vintage_str,
                 "origination_date": origination_date,
                 "ticket": np.round(ticket, 2),

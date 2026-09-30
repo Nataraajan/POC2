@@ -1,21 +1,41 @@
-loan_id,product,vintage,origination_date,ticket,term_months,default_mob,default_flag,payoff_mob,payoff_flag
-22241000423,MoneyKey,2024-10,2024-10-21,687.3,5,-1,0,1,1
-21260200937,CreditFresh,2026-02,2026-02-04,1679.24,9,-1,0,3,1
-21231200171,CreditFresh,2023-12,2023-12-13,1630.59,9,-1,0,1,1
-21251201120,CreditFresh,2025-12,2025-12-28,1805.18,9,-1,0,1,1
-21260501067,CreditFresh,2026-05,2026-05-06,1681.75,9,-1,0,1,1
-22230801123,MoneyKey,2023-08,2023-08-23,759.69,5,2,1,-1,0
-22240601084,MoneyKey,2024-06,2024-06-01,748.18,5,-1,0,3,1
-22250500866,MoneyKey,2025-05,2025-05-20,759.23,5,3,1,-1,0
-21250900811,CreditFresh,2025-09,2025-09-05,1759.83,9,-1,0,2,1
-21231001269,CreditFresh,2023-10,2023-10-18,1876.69,9,-1,0,2,1
-22260200868,MoneyKey,2026-02,2026-02-24,739.56,5,-1,0,1,1
-21260500861,CreditFresh,2026-05,2026-05-30,1952.91,9,-1,0,5,1
-22260600473,MoneyKey,2026-06,2026-06-30,706.95,5,-1,0,2,1
-22251000475,MoneyKey,2025-10,2025-10-12,681.89,5,-1,0,2,1
-21240601385,CreditFresh,2024-06,2024-06-19,1681.48,9,-1,0,3,1
-21241100973,CreditFresh,2024-11,2024-11-12,1710.71,9,-1,0,3,1
-22250801015,MoneyKey,2025-08,2025-08-28,630.33,5,1,1,-1,0
-22260300864,MoneyKey,2026-03,2026-03-23,735.68,5,1,1,-1,0
-21240601518,CreditFresh,2024-06,2024-06-27,1881.23,9,-1,0,4,1
-21231200988,CreditFresh,2023-12,2023-12-02,1893.79,9,-1,0,3,1
+loan_id,product,brand,loan_type,vintage,origination_date,ticket,term_months,default_mob,default_flag,payoff_mob,payoff_flag
+194850,CreditFresh Installment,CreditFresh,Installment,2023-10,2023-10-14,1777.84,24,3,1,-1,0
+191145,CreditFresh Installment,CreditFresh,Installment,2023-10,2023-10-27,1693.39,24,-1,0,9,1
+236374,CreditFresh Installment,CreditFresh,Installment,2023-11,2023-11-29,1773.52,24,-1,0,6,1
+621855,CreditFresh Installment,CreditFresh,Installment,2024-06,2024-06-19,1893.45,24,1,1,-1,0
+685775,CreditFresh Installment,CreditFresh,Installment,2024-07,2024-07-06,1898.13,24,22,1,-1,0
+740618,CreditFresh Installment,CreditFresh,Installment,2024-08,2024-08-24,1910.98,24,-1,0,2,1
+794916,CreditFresh Installment,CreditFresh,Installment,2024-09,2024-09-20,1642.71,24,-1,0,2,1
+794286,CreditFresh Installment,CreditFresh,Installment,2024-09,2024-09-25,1736.89,24,-1,0,9,1
+856580,CreditFresh Installment,CreditFresh,Installment,2024-10,2024-10-09,1796.09,24,2,1,-1,0
+970813,CreditFresh Installment,CreditFresh,Installment,2024-12,2024-12-24,1898.06,24,-1,0,15,1
+1308662,CreditFresh Installment,CreditFresh,Installment,2025-06,2025-06-19,1863.82,24,-1,0,13,1
+1351483,CreditFresh Installment,CreditFresh,Installment,2025-07,2025-07-21,1925.46,24,10,1,-1,0
+1513649,CreditFresh Installment,CreditFresh,Installment,2025-10,2025-10-20,1814.42,24,-1,0,24,1
+1579543,CreditFresh Installment,CreditFresh,Installment,2025-11,2025-11-26,1961.2,24,24,1,-1,0
+1589202,CreditFresh Installment,CreditFresh,Installment,2025-11,2025-11-08,1966.02,24,-1,0,4,1
+1698158,CreditFresh Installment,CreditFresh,Installment,2026-01,2026-01-28,1662.33,24,-1,0,4,1
+291982,CreditFresh Short-Term,CreditFresh,Short-Term,2023-12,2023-12-31,1862.2,12,-1,0,12,1
+394340,CreditFresh Short-Term,CreditFresh,Short-Term,2024-02,2024-02-12,1711.19,12,-1,0,4,1
+781501,CreditFresh Short-Term,CreditFresh,Short-Term,2024-09,2024-09-21,1958.22,12,-1,0,2,1
+893211,CreditFresh Short-Term,CreditFresh,Short-Term,2024-11,2024-11-05,1651.4,12,7,1,-1,0
+963081,CreditFresh Short-Term,CreditFresh,Short-Term,2024-12,2024-12-11,1651.13,12,-1,0,2,1
+1063165,CreditFresh Short-Term,CreditFresh,Short-Term,2025-02,2025-02-22,1787.15,12,-1,0,2,1
+1061702,CreditFresh Short-Term,CreditFresh,Short-Term,2025-02,2025-02-24,1650.12,12,-1,0,4,1
+1166585,CreditFresh Short-Term,CreditFresh,Short-Term,2025-04,2025-04-02,1792.0,12,-1,0,1,1
+1562604,CreditFresh Short-Term,CreditFresh,Short-Term,2025-11,2025-11-28,1879.5,12,-1,0,2,1
+1629055,CreditFresh Short-Term,CreditFresh,Short-Term,2025-12,2025-12-31,1698.04,12,-1,0,2,1
+99486,MoneyKey Installment,MoneyKey,Installment,2023-08,2023-08-29,718.31,24,-1,0,7,1
+654425,MoneyKey Installment,MoneyKey,Installment,2024-06,2024-06-30,648.44,24,-1,0,2,1
+1484471,MoneyKey Installment,MoneyKey,Installment,2025-09,2025-09-09,646.68,24,2,1,-1,0
+1485382,MoneyKey Installment,MoneyKey,Installment,2025-09,2025-09-04,664.24,24,-1,0,11,1
+1715849,MoneyKey Installment,MoneyKey,Installment,2026-01,2026-01-13,657.13,24,-1,0,21,1
+1764398,MoneyKey Installment,MoneyKey,Installment,2026-02,2026-02-24,654.35,24,-1,0,11,1
+1828402,MoneyKey Installment,MoneyKey,Installment,2026-03,2026-03-02,641.99,24,-1,0,2,1
+147556,MoneyKey Short-Term,MoneyKey,Short-Term,2023-09,2023-09-12,689.46,12,2,1,-1,0
+530092,MoneyKey Short-Term,MoneyKey,Short-Term,2024-04,2024-04-06,709.14,12,-1,0,1,1
+533849,MoneyKey Short-Term,MoneyKey,Short-Term,2024-04,2024-04-10,716.01,12,-1,0,5,1
+1200072,MoneyKey Short-Term,MoneyKey,Short-Term,2025-04,2025-04-01,726.79,12,-1,0,1,1
+1253577,MoneyKey Short-Term,MoneyKey,Short-Term,2025-05,2025-05-25,633.29,12,1,1,-1,0
+1311929,MoneyKey Short-Term,MoneyKey,Short-Term,2025-06,2025-06-10,715.27,12,-1,0,9,1
+1657037,MoneyKey Short-Term,MoneyKey,Short-Term,2025-12,2025-12-14,752.99,12,-1,0,1,1

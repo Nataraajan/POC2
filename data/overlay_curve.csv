@@ -1,17 +1,77 @@
 product,mob,cum_default
-CreditFresh,0,0.0
-CreditFresh,1,0.04871621816833471
-CreditFresh,2,0.08682232963958311
-CreditFresh,3,0.11647509603530465
-CreditFresh,4,0.13994158135163337
-CreditFresh,5,0.15837967434007255
-CreditFresh,6,0.17266615220873965
-CreditFresh,7,0.18390262989934214
-CreditFresh,8,0.1927501037059084
-CreditFresh,9,0.19983238669958353
-MoneyKey,0,0.0
-MoneyKey,1,0.14141193819866055
-MoneyKey,2,0.2326470660641864
-MoneyKey,3,0.2907040412055704
-MoneyKey,4,0.32827975913099877
-MoneyKey,5,0.3525204476503633
+CreditFresh Short-Term,0,0.0
+CreditFresh Short-Term,1,0.03743656505766303
+CreditFresh Short-Term,2,0.06897956729638055
+CreditFresh Short-Term,3,0.09473748375303563
+CreditFresh Short-Term,4,0.11685226616632745
+CreditFresh Short-Term,5,0.1345845215742626
+CreditFresh Short-Term,6,0.1497154578807247
+CreditFresh Short-Term,7,0.16226655802469986
+CreditFresh Short-Term,8,0.1728857918955736
+CreditFresh Short-Term,9,0.1814517100329549
+CreditFresh Short-Term,10,0.18847160339906874
+CreditFresh Short-Term,11,0.19423838824001555
+CreditFresh Short-Term,12,0.19912558885273482
+CreditFresh Installment,0,0.0
+CreditFresh Installment,1,0.013136068124791364
+CreditFresh Installment,2,0.02537800078369532
+CreditFresh Installment,3,0.03662647959382756
+CreditFresh Installment,4,0.04730685544143509
+CreditFresh Installment,5,0.05747830194255914
+CreditFresh Installment,6,0.06656164150978248
+CreditFresh Installment,7,0.0751066348853783
+CreditFresh Installment,8,0.08313963733154851
+CreditFresh Installment,9,0.0910462638892297
+CreditFresh Installment,10,0.09830715358172996
+CreditFresh Installment,11,0.10508192600161725
+CreditFresh Installment,12,0.11120411986202093
+CreditFresh Installment,13,0.11692800966072792
+CreditFresh Installment,14,0.122358102641631
+CreditFresh Installment,15,0.1275883273743026
+CreditFresh Installment,16,0.13229479520584464
+CreditFresh Installment,17,0.13669430364014704
+CreditFresh Installment,18,0.1408561435987088
+CreditFresh Installment,19,0.14463151281060724
+CreditFresh Installment,20,0.14841326088708418
+CreditFresh Installment,21,0.15192954187031243
+CreditFresh Installment,22,0.1549833397607059
+CreditFresh Installment,23,0.15807423154000327
+CreditFresh Installment,24,0.16103558057003303
+MoneyKey Short-Term,0,0.0
+MoneyKey Short-Term,1,0.07978189751929288
+MoneyKey Short-Term,2,0.14280998795998157
+MoneyKey Short-Term,3,0.1931291574521677
+MoneyKey Short-Term,4,0.23282614053897294
+MoneyKey Short-Term,5,0.2636966685232848
+MoneyKey Short-Term,6,0.2882828269213389
+MoneyKey Short-Term,7,0.3077345265382385
+MoneyKey Short-Term,8,0.32293372025038275
+MoneyKey Short-Term,9,0.3351279917050387
+MoneyKey Short-Term,10,0.34515930967766706
+MoneyKey Short-Term,11,0.3529009058819401
+MoneyKey Short-Term,12,0.35912794904856093
+MoneyKey Installment,0,0.0
+MoneyKey Installment,1,0.02476272138747348
+MoneyKey Installment,2,0.04865304536026138
+MoneyKey Installment,3,0.07040202792874821
+MoneyKey Installment,4,0.08963376126467043
+MoneyKey Installment,5,0.10786395710650977
+MoneyKey Installment,6,0.12452118973657901
+MoneyKey Installment,7,0.1402757337676888
+MoneyKey Installment,8,0.15410415288459295
+MoneyKey Installment,9,0.16711405171985927
+MoneyKey Installment,10,0.17911718589012188
+MoneyKey Installment,11,0.19021048965062365
+MoneyKey Installment,12,0.2002450309698484
+MoneyKey Installment,13,0.20991681638741017
+MoneyKey Installment,14,0.2186973470578925
+MoneyKey Installment,15,0.22665603921938804
+MoneyKey Installment,16,0.23398614380049562
+MoneyKey Installment,17,0.24092799529206713
+MoneyKey Installment,18,0.2469034898621463
+MoneyKey Installment,19,0.25279418867075115
+MoneyKey Installment,20,0.2580330718824277
+MoneyKey Installment,21,0.26283009463849827
+MoneyKey Installment,22,0.267250831229384
+MoneyKey Installment,23,0.27119707457241515
+MoneyKey Installment,24,0.27494402209805935

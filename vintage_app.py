@@ -34,8 +34,8 @@ NAVY = "#1E2761"
 GREEN = "#16A34A"
 BLUE = "#2563EB"
 RED = "#DC2626"
-PRODUCT_COLORS = {"CreditFresh": RED, "MoneyKey": BLUE}
-PRODUCT_TINTS = {"CreditFresh": "#FEE2E2", "MoneyKey": "#DBEAFE"}  # light fills for observed triangle cells
+PRODUCT_COLORS = dict(zip(GENERATOR_PRODUCTS, [RED, "#A21CAF", BLUE, "#059669"]))
+PRODUCT_TINTS = {p: "#FEE2E2" if p.startswith("CreditFresh") else "#DBEAFE" for p in GENERATOR_PRODUCTS}  # light fills for observed triangle cells
 
 
 
@@ -83,7 +83,7 @@ def curve_figure(overlay, reference=None, height=380, names=None):
     if reference is not None:
         for product, color in PRODUCT_COLORS.items():
             ref = reference[reference["product"] == product]
-            fig.add_trace(go.Scatter(x=ref["mob"], y=ref["cum_default"], name=f"{product} — 2M precomputed (reference)",
+            fig.add_trace(go.Scatter(x=ref["mob"], y=ref["cum_default"], name=f"{product} — precomputed (reference)",
                                      mode="lines", line=dict(color=color, width=2, dash="dot"), opacity=0.45))
     for product, color in PRODUCT_COLORS.items():
         sub = overlay[overlay["product"] == product]
@@ -100,7 +100,7 @@ def curve_figure(overlay, reference=None, height=380, names=None):
 def render_vintage_analysis():
     from payment_curves import load_payment_curves, derive_payment_curves
     st.subheader("36-vintage default and payoff analysis")
-    st.caption("Updated 100,000-loan run: July 2023–June 2026. Both curves use fully mature vintages at the June 2026 cutoff. The older 2M run is retained below as a separate reference.")
+    st.caption("One reproducible synthetic run: July 2023–June 2026. Four hypothetical brand/loan-type segments; 12/24-month terms. Both curves use fully mature vintages at the June 2026 cutoff. Not actual product terms or calibrated Propel credit assumptions.")
     st.dataframe(pd.read_csv(DATA_DIR / "payment_sample.csv"),hide_index=True)
     payment_fig=go.Figure()
     for brand,risk in load_payment_curves().items():
@@ -182,8 +182,8 @@ def render_vintage_analysis():
     observation_label = OBSERVATION_DATE.to_timestamp(how="end").strftime("%B %d, %Y")
     st.markdown(
         f"The loan rows are loaded into an in-memory SQLite database and collapsed by two queries: dollars defaulted "
-        f"per **product × vintage × month-on-book**, and dollars originated per **product × vintage**. Two million rows "
-        f"become a few hundred.\n\n"
+        f"per **segment × vintage × month-on-book**, and dollars originated per **segment × vintage**. Two million rows "
+        f"become a small segment/vintage triangle.\n\n"
         f"Censoring is applied as those aggregates are assembled into the triangle: **a vintage only contributes a data "
         f"point at a given month-on-book if it's actually old enough to have reached it** by the observation date "
         f"({observation_label}) — `max_observable_mob = min(term, months elapsed)`. The SQL itself counts every default "
@@ -198,8 +198,8 @@ def render_vintage_analysis():
 
     heading("3 · Output — the derived curve", level=4)
     st.markdown(
-        "For each month-on-book, pool the defaulted dollars across **only** the vintages that have reached it, divide by "
-        "those vintages' originations, then accumulate. The result is `overlay_curve.csv` — a small derived output. The integrated Vintage overlay page fits and explicitly maps these curves into forecast parameters. Plotted in the curve chart below."
+        "Within each segment, pool only vintages that have reached the **full segment term**, divide by "
+        "those same vintages' originations at every age, then accumulate. The result is `overlay_curve.csv`. The default curve is identical to the empirical curve used by the forecast; payoff timing uses the same eligible loans. Recent cohorts remain visible in the censored triangle."
     )
     curve_table = overlay_df.pivot(index="mob", columns="product", values="cum_default")[list(PRODUCT_COLORS)]
     curve_table.index = [f"MOB {mob}" for mob in curve_table.index]
@@ -212,7 +212,7 @@ def render_vintage_analysis():
     # ===========================================================================
     st.divider()
     heading("Vintage triangle — cumulative default by vintage × month-on-book")
-    triangle_product = st.radio("Product", list(PRODUCT_COLORS), horizontal=True, key="triangle_product")
+    triangle_product = st.radio("Segment", list(PRODUCT_COLORS), horizontal=True, key="triangle_product")
     show_triangle(triangle_df, triangle_product)
     st.caption("Blank cells are the honest signature of censored data — those vintages haven't been on the books long "
                "enough to reach that month yet — not missing or broken data.")
@@ -230,8 +230,8 @@ def render_vintage_analysis():
     st.divider()
     heading("Live demo")
     st.markdown(
-        f"Pick a product, set its lifetime default rate, and run the same `generate()` and `build_triangle()` functions "
-        f"from the scripts above on {LIVE_DEMO_ROWS:,} fresh rows, right now. The other product stays at its baseline, so "
+        f"Pick a segment, set its lifetime default rate, and run the same `generate()` and `build_triangle()` functions "
+        f"from the scripts above on {LIVE_DEMO_ROWS:,} fresh rows, right now. The other three segments stay at their baselines, so "
         f"cause and effect is easy to follow. **Smaller scale and separate from the {gen_stats['total_rows']:,}-row "
         f"precomputed results above.**"
     )
@@ -242,7 +242,7 @@ def render_vintage_analysis():
 
 
     pick_col, rate_col = st.columns([1, 2])
-    live_product = pick_col.radio("Product to tune", list(PRODUCT_COLORS), horizontal=True, key="live_product")
+    live_product = pick_col.radio("Segment to tune", list(PRODUCT_COLORS), horizontal=True, key="live_product")
     baseline_pct = GENERATOR_PRODUCTS[live_product]["lifetime_default"] * 100
     # One slider key per product, so each starts at (and remembers) its own product's setting.
     live_rate_pct = rate_col.number_input(f"{live_product} lifetime default rate (%)", 0.0, 50.0, value=baseline_pct, step=0.5,
@@ -296,8 +296,8 @@ def render_vintage_analysis():
                 st.plotly_chart(curve_figure(live["overlay"], reference=overlay_df, height=340, names=labels),
                                 width="stretch")
                 st.caption(f"Solid lines: this live run. Dotted: the {gen_stats['total_rows']:,}-row precomputed curves at "
-                           f"baseline rates, for reference — the tuned product's curve moves to the new rate, the other "
-                           f"stays on its reference line (a sample {gen_stats['total_rows'] / live['rows']:.0f}x smaller, "
+                           f"baseline rates, for reference — the tuned segment's curve moves to the new rate; others "
+                           f"retain baseline assumptions (a sample {gen_stats['total_rows'] / live['rows']:.0f}x smaller, "
                            f"so a little more noise).")
             for tab, product in zip(live_tabs[1:], PRODUCT_COLORS):
                 with tab:

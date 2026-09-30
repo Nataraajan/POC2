@@ -127,14 +127,14 @@ def test_product_persistence_and_combined_totals():
 
 def test_historical_switch_and_restore():
     at = app()
-    at.number_input(key="driver_risk_CreditFresh_pd").set_value(20.0).run()
+    at.number_input(key="driver_risk_CreditFresh Short-Term_pd").set_value(30.0).run()
     manual = full(at).copy()
     next(b for b in at.button if b.label == "Apply historical curve").click().run()
     assert at.selectbox(key="driver_source").value == "Historical vintage"
     assert not np.allclose(full(at).Revenue, manual.Revenue)
     at.selectbox(key="driver_source").set_value("Manual assumptions").run()
     pd.testing.assert_frame_equal(full(at), manual)
-    assert at.number_input(key="driver_risk_CreditFresh_pd").value == 20.0
+    assert at.number_input(key="driver_risk_CreditFresh Short-Term_pd").value == 30.0
 
 
 def test_growth_scenarios_reset_and_partial_quarter():
@@ -151,15 +151,15 @@ def test_growth_scenarios_reset_and_partial_quarter():
     assert at.number_input(key="driver_Short-Term_opening_m").value == 255.6
 
 
-def test_term_one_and_single_age():
+def test_matching_term_is_fixed_and_single_age():
     at = app()
-    at.number_input(key="driver_Short-Term_term").set_value(1).run()
-    assert not at.exception
+    assert at.number_input(key="driver_Short-Term_term").disabled
+    assert at.number_input(key="driver_Short-Term_term").value == 12
     at.selectbox(key="driver_Short-Term_age_mix").set_value(
         "Single cohort at specified MOB"
     ).run()
     assert not at.exception
-    assert at.number_input(key="driver_Short-Term_age").value == 0
+    assert at.number_input(key="driver_Short-Term_age").value == 3
 
 
 def test_invalid_opening_age():
@@ -235,7 +235,7 @@ def test_vintage_experiment_applies_to_forecast():
     at = app()
     before = full(at).copy()
     at.radio(key="navigation").set_value("Vintage overlay").run()
-    next(n for n in at.number_input if n.label == "CreditFresh lifetime default (%)").set_value(35.0)
+    next(n for n in at.number_input if n.label == "CreditFresh Short-Term lifetime default (%)").set_value(35.0)
     next(b for b in at.button if b.label == "Generate vintage curves").click().run(timeout=60)
     assert not at.exception
     next(b for b in at.button if b.label == "Apply overlay to forecast").click().run()
