@@ -50,7 +50,8 @@ def test_scenarios_compare_without_mutating_live_inputs():
     next(b for b in at.button if b.label == 'Upside').click().run()
     assert at.session_state['scenario'] == 'Upside'
     assert full(at).Revenue.sum()/1e6 == pytest.approx(comparison.loc['Upside', 'Revenue'])
-    assert any('ACTIVE SCENARIO: Upside' in m.value for m in at.markdown)
+    assert not any('ACTIVE SCENARIO:' in m.value for m in at.markdown)
+    assert any('.st-key-scenario_Upside button {background:#0078d9' in m.value for m in at.markdown)
     assert 'Monthly schedule' not in at.radio(key='navigation').options
 
 

@@ -73,7 +73,10 @@ div[data-testid="stVerticalBlockBorderWrapper"],div[data-testid="stLayoutWrapper
 h1,h2,h3{color:#263a50}
 [data-testid="stSidebar"]{background:#263a50}
 .brand span{color:#68b8ff!important}
-.st-key-navigation label{padding:10px 12px!important;margin:4px 0!important;border-radius:8px;transition:background .15s}
+.st-key-navigation [role="radiogroup"],.st-key-navigation [role="radiogroup"]>div{width:100%!important}
+.st-key-navigation label{display:flex!important;box-sizing:border-box;width:100%!important;min-height:62px;padding:12px 14px!important;margin:4px 0!important;border:1px solid #506277;border-radius:8px;background:#30465e;cursor:pointer;transition:background .15s}
+.st-key-navigation label > div{width:100%}
+.st-key-navigation label p{font-weight:550}
 .st-key-navigation label > div > div:first-child:not([data-testid]){display:none!important}
 .st-key-navigation label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
 .st-key-navigation label:hover{background:#344e69}
@@ -388,10 +391,6 @@ def render_driver_panel_and_forecast():
     for key in list(st.session_state):
         if any(key.startswith(f"driver_{product}_") for product in PRODUCT_DEFAULTS):
             st.session_state[key] = st.session_state[key]
-    st.markdown(
-        f'<span class="badge">● ACTIVE SCENARIO: {escape(st.session_state.get("scenario","Base"))}</span>',
-        unsafe_allow_html=True,
-    )
     if section in ("Forecasting", "Model assumptions"):
         total = sum(st.session_state[f"driver_{k}_opening"] for k in PRODUCT_DEFAULTS)
         st.session_state["driver_opening_total_m"] = total / 1e6
@@ -726,4 +725,3 @@ from ai_chat import render_chat
 if section == "Vintage Analysis & Overlay":
     st.session_state["ai_context"] = current_ai_context({k: args(k, historical) for k in PRODUCT_DEFAULTS})
 render_chat()
-
