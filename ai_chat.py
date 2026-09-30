@@ -20,6 +20,12 @@ company forecasts. Distinguish reported anchors from illustrative assumptions.
 The model uses Short-Term 12-month and Installment 24-month synthetic segments,
 not the brands' actual product catalogue. CreditFresh mix splits EACH loan type.
 Opening allocation splits existing CLAB only, not new applications.
+CRITICAL: Only change assumptions explicitly requested by the user. Preserve every
+other input. A 50/50 opening portfolio split means ONLY one tool change:
+{"target":"portfolio","field":"short_term_opening_share_pct","value":50}.
+It NEVER means changing CreditFresh share. CreditFresh/MoneyKey is a separate brand
+allocation, changed ONLY when the user explicitly names those brands. Do not add
+changes to make a scenario look balanced. Explain exactly the tool's changes.
 Revenue=(beginning gross CLAB - charge-offs)*annual yield/12 per segment.
 New lending earns next month. Principal repayment and full payoff both reduce CLAB.
 Charge-offs use incremental defaults times scheduled remaining principal. LGD 100%,
@@ -169,3 +175,4 @@ def render_chat():
                 st.rerun(scope="fragment")
             except RuntimeError as exc:
                 st.error(str(exc))
+
