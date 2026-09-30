@@ -124,10 +124,10 @@ def toggle_chat():
 @st.fragment
 def render_chat():
     st.markdown('''<style>
-    .st-key-ai_launcher{position:fixed!important;bottom:28px;right:24px;width:150px!important;z-index:999990}
-    .st-key-ai_launcher button{width:100%;border-radius:28px!important;background:#123c68!important;color:white!important;box-shadow:0 6px 24px #10284630}
+    .st-key-ai_launcher{position:fixed!important;bottom:78px;right:24px;width:150px!important;z-index:999990}
+    .st-key-ai_launcher button{width:100%;border-radius:28px!important;background:#0078d9!important;color:white!important;box-shadow:0 6px 24px #10284630}
     .st-key-ai_launcher button p{color:white!important;font-weight:600}
-    .st-key-ai_panel{position:fixed!important;bottom:88px;right:24px;width:460px!important;max-width:calc(100vw - 32px);max-height:calc(100dvh - 110px);overflow-y:auto;z-index:999989;background:white!important;border:1px solid #dce5ef;border-radius:16px;padding:18px;box-shadow:0 12px 48px #10284630}
+    .st-key-ai_panel{position:fixed!important;bottom:138px;right:24px;width:460px!important;max-width:calc(100vw - 32px);max-height:calc(100dvh - 160px);overflow-y:auto;z-index:999989;background:white!important;border:1px solid #dce5ef;border-radius:16px;padding:18px;box-shadow:0 12px 48px #10284630}
     .st-key-ai_panel [data-testid="stChatInput"]{position:relative;bottom:auto}
     </style>''', unsafe_allow_html=True)
     opened = st.session_state.get("ai_open", False)

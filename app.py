@@ -67,6 +67,21 @@ div[data-testid="stVerticalBlockBorderWrapper"],div[data-testid="stLayoutWrapper
 [data-testid="stCaptionContainer"] p{color:#566a89!important}
 @media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1100px){.kpi-value{font-size:1.2rem}.block-container{padding:1rem}.kpi{padding:9px}}
+/* Palette sampled from propelholdings.com: blue #0078D9, slate #263A50. */
+.stApp{background:#f5f7fa;color:#263a50}
+h1,h2,h3{color:#263a50}
+[data-testid="stSidebar"]{background:#263a50}
+.brand span{color:#68b8ff!important}
+.st-key-navigation label{padding:10px 12px!important;margin:4px 0!important;border-radius:8px;transition:background .15s}
+.st-key-navigation label:hover{background:#344e69}
+.st-key-navigation label:has(input:checked){background:#0078d9!important;box-shadow:inset 3px 0 #a8d8ff}
+.st-key-navigation label:has(input:checked) p{color:white!important;font-weight:700}
+.st-key-forecast_toolbar button{height:42px!important;min-height:42px!important;border-radius:8px!important;padding:6px 12px!important;border-color:#cbd5df!important}
+.st-key-forecast_toolbar button p{white-space:nowrap;font-size:.82rem!important}
+.st-key-forecast_toolbar button:hover{border-color:#0078d9!important;color:#0078d9!important;background:#edf6ff!important}
+.badge{background:#0078d9;color:white;border-radius:8px;padding:9px 16px}
+.kpi.hero{background:#263a50;border-color:#263a50}
+.kpi-value{color:#263a50}
 </style>""",
     unsafe_allow_html=True,
 )
@@ -298,7 +313,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.caption("Synthetic history → original curves → editable assumptions → forecast" if section == "Vintage Analysis & Overlay" else "Applications → Originations → CLAB → Charge-offs → Revenue")
-toolbar = st.columns([1.2, 0.8, 0.65, 0.65, 0.8, 0.65, 1.5, 0.65])
+with st.container(key="forecast_toolbar"):
+    toolbar = st.columns([1.2, .8, .8, .8, .8, 1.25, .8, .8])
 view = toolbar[0].selectbox(
     "Loan-type view", ["Combined"] + list(PRODUCT_DEFAULTS), key="portfolio"
 )
