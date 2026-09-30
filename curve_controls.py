@@ -29,7 +29,8 @@ def render_controls(empirical, expanded=False, on_change=None):
             for field, value in fields.items():
                 st.session_state[state_key(source, segment, field)] = float(value)
 
-    with st.expander("Curve assumptions and adjustments", expanded=expanded):
+    with st.expander("Default & payoff assumptions", expanded=expanded):
+        st.caption("Full payoff closes the remaining balance; scheduled repayments are calculated separately. Non-default payoff share = 100% minus lifetime default. Only payoff timing is independently editable.")
         st.caption("Changes apply immediately to the forecast. Each source remembers its own settings.")
         if source == SYNTHETIC:
             st.caption("Original synthetic history stays unchanged. Timing 1 preserves the observed curve; below 1 moves events earlier, above 1 later.")
@@ -42,7 +43,8 @@ def render_controls(empirical, expanded=False, on_change=None):
                                  key=state_key(source, segment, "pd"), on_change=on_change)
             cols[1].number_input("Default timing", .25, 4.0, step=.05,
                                  key=state_key(source, segment, "default_timing"), on_change=on_change)
-            cols[2].number_input("Payoff timing", .25, 4.0, step=.05,
+            cols[2].number_input("Full-payoff timing", .25, 4.0, step=.05,
+                                 help="Not a monthly repayment %. Below 1 moves closure earlier; above 1 later. In synthetic mode, 1 preserves observed timing; in manual mode, 1 is linear timing.",
                                  key=state_key(source, segment, "payoff_timing"), on_change=on_change)
         st.button("Reset this source's curves", on_click=restore)
         st.caption("Payoff means full loan closure, alongside scheduled principal repayments. Default and payoff outcomes are mutually exclusive. LGD 100%, no recoveries. These are hypothetical POC assumptions, not calibrated Propel credit assumptions.")

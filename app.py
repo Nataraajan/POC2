@@ -335,7 +335,7 @@ for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
         help="Base uses Q2 2026 funded-volume growth and fitted conversion. Upside/downside vary monthly growth by 1 percentage point and conversion by 3 points. Credit assumptions are retained.",
     )
 def toggle_comparison():
-    st.session_state["compare_scenarios"] = not st.session_state.get("compare_scenarios", False)
+    st.session_state["compare_scenarios"] = True
 
 
 toolbar[5].button("Compare scenarios", key="compare_scenarios_button", on_click=toggle_comparison, width="stretch")
@@ -382,6 +382,22 @@ def highlight_scenario_controls():
     if st.session_state.get("compare_scenarios", False):
         css.append(".st-key-compare_scenarios_button button{background:#e1f1ff!important;border-color:#0078d9!important}")
     st.markdown("<style>" + "".join(css) + "</style>", unsafe_allow_html=True)
+
+
+@st.dialog("Scenario comparison", width="large")
+def show_scenario_comparison():
+    all_inputs = {k: args(k, historical) for k in PRODUCT_DEFAULTS}
+    parts = cached_segment_forecasts(all_inputs, cf_mix, product_risks, curve_settings[mode])
+    df = combine(parts[b][k] for b in parts for k in selected)
+    st.caption("Same current allocation, curves, yields and opening ages. Presets change application growth and approval only. Values in USD millions; flows cover the selected horizon.")
+    rows = [{"Scenario": "Current · " + st.session_state.get("scenario", "Base"),
+             **{k: v/1e6 for k, v in metrics(df).items()}}]
+    for name in ("Base", "Upside", "Downside"):
+        trial = {kind: dict(values, **preset_values(name, kind)) for kind, values in all_inputs.items()}
+        parts = cached_segment_forecasts(trial, cf_mix, product_risks, curve_settings[mode])
+        result = combine(parts[b][k] for b in parts for k in selected)
+        rows.append({"Scenario": name, **{k: v/1e6 for k, v in metrics(result).items()}})
+    st.table(pd.DataFrame(rows).set_index("Scenario").style.format("{:,.2f}"))
 
 
 @st.fragment
@@ -451,7 +467,7 @@ def render_driver_panel_and_forecast():
             with cols[3]:
                 st.markdown("**◒ Credit Curve**")
                 st.write(mode)
-                st.caption("Edit default rates and timing in Curve assumptions and adjustments above. Review original and adjusted curves in Vintage Analysis & Overlay.")
+                st.caption("Edit default rates and timing in Default & payoff assumptions above. Review original and adjusted curves in Vintage Analysis & Overlay.")
             with cols[4]:
                 st.markdown("**▧ Opening Portfolio**")
                 st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
@@ -683,18 +699,6 @@ def render_driver_panel_and_forecast():
 
         render_forecast_charts(df, current, focus, product_risks, product_fits)
 
-    if st.session_state.get("compare_scenarios", False):
-        st.subheader("Scenario comparison")
-        st.caption("Same current allocation, curves, yields and opening ages. Presets change application growth and approval only. Values in USD millions; flows cover the selected horizon.")
-        rows = [{"Scenario": "Current · " + st.session_state.get("scenario", "Base"),
-                 **{k: v/1e6 for k, v in metrics(df).items()}}]
-        for name in ("Base", "Upside", "Downside"):
-            trial = {kind: dict(values, **preset_values(name, kind)) for kind, values in all_inputs.items()}
-            parts = cached_segment_forecasts(trial, cf_mix, product_risks, curve_settings[mode])
-            result = combine(parts[b][k] for b in parts for k in selected)
-            rows.append({"Scenario": name, **{k: v/1e6 for k, v in metrics(result).items()}})
-        st.table(pd.DataFrame(rows).set_index("Scenario").style.format("{:,.2f}"))
-
     if section == "Model assumptions":
         st.subheader("Model assumptions")
         st.table(pd.DataFrame([
@@ -726,3 +730,5 @@ if section == "Vintage Analysis & Overlay":
     st.session_state["ai_context"] = current_ai_context({k: args(k, historical) for k in PRODUCT_DEFAULTS})
 render_chat()
 
+if st.session_state.pop("compare_scenarios", False):
+    show_scenario_comparison()
