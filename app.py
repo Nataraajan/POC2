@@ -6,9 +6,7 @@ import json
 from html import escape
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-from excel_export import export_model
 from product_forecast import default_product_curves, segment_forecasts, combine
 from curve_model import SYNTHETIC, MANUAL
 from curve_controls import render_controls, render_curve_comparison
@@ -155,6 +153,12 @@ def args(product, historical):
     )
 
 
+@st.cache_data(show_spinner=False, max_entries=64)
+def cached_segment_forecasts(inputs, share, risks, curve_settings):
+    """Cache pure forecasts; all drivers, horizon, mix and curves are hashed."""
+    return segment_forecasts(inputs, share, risks)
+
+
 def chart(fig, ytitle):
     fig.update_layout(
         height=265,
@@ -169,6 +173,54 @@ def chart(fig, ytitle):
     )
     fig.update_yaxes(gridcolor="#edf2f8", zerolinecolor="#d8e1ef")
     return fig
+
+
+def render_forecast_charts(df, current, focus, product_risks, product_fits):
+    if st.toggle("Show revenue chart", value=False, key="show_revenue_chart"):
+        import plotly.graph_objects as go
+        st.subheader("Monthly Revenue Trend")
+        fig = go.Figure()
+        for field, label, color in [
+            ("revenue", "Revenue", "#00ad60"),
+            ("net_revenue", "Net revenue", "#111f65"),
+        ]:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.month,
+                    y=df[field],
+                    name=label,
+                    line=dict(
+                        color=color,
+                        width=3,
+                        dash="dash" if field == "net_revenue" else "solid",
+                    ),
+                )
+            )
+        fig.add_trace(
+            go.Bar(
+                x=df.month,
+                y=df.new_provisions,
+                name="Provision expense",
+                marker_color="#f34c60",
+                opacity=0.7,
+            )
+        )
+        st.plotly_chart(chart(fig, "$ / month"), width="stretch")
+        opening = df.iloc[0]
+        st.markdown(
+            f'<div class="note">Month 1 earns on {_fmt_dollar_scaled(opening.beginning_gross_clab)} of opening loans, less charge-offs. Its existing reserve is carried forward.</div>',
+            unsafe_allow_html=True,
+        )
+        runoff = current.principal_repaid + current.charge_offs
+        st.caption(
+            f"Month {focus}: new originations {_fmt_dollar_scaled(current.originations)} vs repayments {_fmt_dollar_scaled(current.principal_repaid)} and charge-offs {_fmt_dollar_scaled(current.charge_offs)}. Gross CLAB {'falls' if runoff>current.originations else 'rises'} by {_fmt_dollar_scaled(abs(current.originations-runoff))}. Revenue follows the earning balance. Opening age assumptions affect the initial runoff.".replace(
+                "$", r"\$"
+            )
+        )
+    if st.toggle("Show applied curve chart", value=False, key="show_applied_chart"):
+        st.subheader("Applied curves vs synthetic history")
+        render_curve_comparison(product_risks, product_fits)
+        st.caption("Charge-offs use incremental defaults × principal still owed. PLL is the expected lifetime principal loss on new originations, booked upfront. Terms remain 12/24 months.")
 
 
 LABELS = {
@@ -250,10 +302,6 @@ for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
         help="Base uses Q2 2026 funded-volume growth and fitted conversion. Upside/downside vary monthly growth by 1 percentage point and conversion by 3 points. Credit assumptions are retained.",
     )
 toolbar[5].button("Reset", on_click=reset, width="stretch")
-toolbar[6].markdown(
-    f'<span class="badge">● {escape(st.session_state.get("scenario","Base"))} scenario · Live calculation</span>',
-    unsafe_allow_html=True,
-)
 selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
 st.session_state.setdefault("driver_creditfresh_mix", 80.0)
 mix_left, mix_right = st.columns([1, 3])
@@ -266,328 +314,301 @@ historical = mode == SYNTHETIC
 product_risks = curves_by_source[mode]
 manual_product_risks = curves_by_source[MANUAL]
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
-if section == "Forecasting":
-    with st.container(border=True, key="driver_panel"):
-        driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
-        driver_title.subheader("Forecast Drivers")
-        driver_note.caption(
-            "US$639.083M reported CLAB at June 30, 2026, mapped to performing loans for this POC. The 40% / 60% split and age mix are assumptions."
-        )
-        edit = (
-            driver_product.selectbox(
-                "Edit loan-type drivers",
-                selected,
-                key="edit_product",
-                label_visibility="collapsed",
+@st.fragment
+def render_driver_panel_and_forecast():
+    # Preserve drivers for the loan type hidden during a fragment-only rerun.
+    for key in list(st.session_state):
+        if any(key.startswith(f"driver_{product}_") for product in PRODUCT_DEFAULTS):
+            st.session_state[key] = st.session_state[key]
+    st.markdown(
+        f'<span class="badge">● {escape(st.session_state.get("scenario","Base"))} scenario · Live calculation</span>',
+        unsafe_allow_html=True,
+    )
+    if section == "Forecasting":
+        with st.container(border=True, key="driver_panel"):
+            driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
+            driver_title.subheader("Forecast Drivers")
+            driver_note.caption(
+                "US$639.083M reported CLAB at June 30, 2026, mapped to performing loans for this POC. The 40% / 60% split and age mix are assumptions."
             )
-            if view == "Combined"
-            else view
-        )
-        p = f"driver_{edit}_"
-        cols = st.columns([1, 1, 1, 1.2, 1.15])
+            edit = (
+                driver_product.selectbox(
+                    "Edit loan-type drivers",
+                    selected,
+                    key="edit_product",
+                    label_visibility="collapsed",
+                )
+                if view == "Combined"
+                else view
+            )
+            p = f"driver_{edit}_"
+            cols = st.columns([1, 1, 1, 1.2, 1.15])
 
-        def number(col, label, field, minimum, maximum, step):
-            return col.number_input(
-                label, minimum, maximum, step=step, key=p + field, on_change=custom
-            )
+            def number(col, label, field, minimum, maximum, step):
+                return col.number_input(
+                    label, minimum, maximum, step=step, key=p + field, on_change=custom
+                )
 
-        with cols[0]:
-            st.markdown("**◈ Volume Drivers**")
-            number(st, "Applications / month", "apps", 0, 500000, 500)
-            number(st, "Monthly growth (%)", "growth", -20.0, 20.0, 0.5)
-            with st.expander("Seasonality · 12 months"):
-                for m in range(12):
-                    number(st, f"Month {m+1} multiplier", f"season_{m}", 0.5, 1.5, 0.1)
-        with cols[1]:
-            st.markdown("**♧ Underwriting**")
-            number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
-            st.caption("Preset approval is an effective funding conversion, fitted to reported dollars; not a disclosed approval rate.")
-            number(st, "Average loan size ($)", "size", 100, 100000, 100)
-            st.number_input("Synthetic segment term (months)", 1, 60, step=1, key=p + "term", disabled=True)
-            st.caption("Fixed at 12/24 months to match the source history. Changing terms requires regenerating matching curves.")
-        with cols[2]:
-            st.markdown("**◇ Yield & Pricing**")
-            number(st, "Annual yield (%)", "yield", 0.0, 200.0, 1.0)
-            st.caption("Yield also determines the contractual amortization schedule.")
-            st.caption("Existing loans earn in month 1. New loans earn from month 2.")
-        with cols[3]:
-            st.markdown("**◒ Credit Curve**")
-            st.write(mode)
-            st.caption("Edit default rates and timing in Curve assumptions and adjustments above. Review original and adjusted curves in Vintage Analysis & Overlay.")
-        with cols[4]:
-            st.markdown("**▧ Opening Portfolio**")
-            st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
-            def update_opening():
-                st.session_state[p + "opening"] = st.session_state[p + "opening_m"] * 1_000_000
-                custom()
-            st.number_input("Opening gross CLAB ($M)", 0.0, 1000.0, step=1.0,
-                            format="%.2f", key=p + "opening_m", on_change=update_opening)
-            st.selectbox(
-                "Opening age mix",
-                ["Even balance by MOB (assumed)", "Single cohort at specified MOB"],
-                key=p + "age_mix",
-                on_change=custom,
+            with cols[0]:
+                st.markdown("**◈ Volume Drivers**")
+                number(st, "Applications / month", "apps", 0, 500000, 500)
+                number(st, "Monthly growth (%)", "growth", -20.0, 20.0, 0.5)
+                with st.expander("Seasonality · 12 months"):
+                    for m in range(12):
+                        number(st, f"Month {m+1} multiplier", f"season_{m}", 0.5, 1.5, 0.1)
+            with cols[1]:
+                st.markdown("**♧ Underwriting**")
+                number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
+                st.caption("Preset approval is an effective funding conversion, fitted to reported dollars; not a disclosed approval rate.")
+                number(st, "Average loan size ($)", "size", 100, 100000, 100)
+                st.number_input("Synthetic segment term (months)", 1, 60, step=1, key=p + "term", disabled=True)
+                st.caption("Fixed at 12/24 months to match the source history. Changing terms requires regenerating matching curves.")
+            with cols[2]:
+                st.markdown("**◇ Yield & Pricing**")
+                number(st, "Annual yield (%)", "yield", 0.0, 200.0, 1.0)
+                st.caption("Yield also determines the contractual amortization schedule.")
+                st.caption("Existing loans earn in month 1. New loans earn from month 2.")
+            with cols[3]:
+                st.markdown("**◒ Credit Curve**")
+                st.write(mode)
+                st.caption("Edit default rates and timing in Curve assumptions and adjustments above. Review original and adjusted curves in Vintage Analysis & Overlay.")
+            with cols[4]:
+                st.markdown("**▧ Opening Portfolio**")
+                st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
+                def update_opening():
+                    st.session_state[p + "opening"] = st.session_state[p + "opening_m"] * 1_000_000
+                    custom()
+                st.number_input("Opening gross CLAB ($M)", 0.0, 1000.0, step=1.0,
+                                format="%.2f", key=p + "opening_m", on_change=update_opening)
+                st.selectbox(
+                    "Opening age mix",
+                    ["Even balance by MOB (assumed)", "Single cohort at specified MOB"],
+                    key=p + "age_mix",
+                    on_change=custom,
+                )
+                # A term reduction can invalidate an existing age. Clamp visibly before rendering.
+                if st.session_state[p + "age"] >= st.session_state[p + "term"]:
+                    st.session_state[p + "age"] = st.session_state[p + "term"] - 1
+                    st.caption("Opening age adjusted to stay within the new loan term.")
+                if st.session_state[p + "age_mix"] == "Single cohort at specified MOB":
+                    number(
+                        st,
+                        "Opening age (MOB)",
+                        "age",
+                        0,
+                        st.session_state[p + "term"] - 1,
+                        1,
+                    )
+                st.caption(
+                    "Opening reserve = remaining expected losses. New-loan provision: at origination."
+                )
+
+    all_inputs = {product: args(product, historical) for product in PRODUCT_DEFAULTS}
+    segments = cached_segment_forecasts(all_inputs, cf_mix, product_risks, curve_settings[mode])
+    forecasts = {kind: combine(segments[brand][kind] for brand in segments) for kind in all_inputs}
+    brand_forecasts = {brand: combine(parts[kind] for kind in selected) for brand, parts in segments.items()}
+    df = combine(brand_forecasts.values())
+    current = df.iloc[focus - 1]
+    st.success(
+        f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
+    )
+    if historical and st.toggle("Compare with manual assumptions", value=False, key="show_manual_comparison"):
+        manual_segments = cached_segment_forecasts(all_inputs, cf_mix, manual_product_risks, curve_settings[MANUAL])
+        manual_revenue = sum(manual_segments[b][k].revenue.sum() for b in manual_segments for k in selected)
+        manual_provision = sum(manual_segments[b][k].new_provisions.sum() for b in manual_segments for k in selected)
+        st.caption(
+            f"Synthetic vintage with adjustments vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
+                "$", r"\$"
             )
-            # A term reduction can invalidate an existing age. Clamp visibly before rendering.
-            if st.session_state[p + "age"] >= st.session_state[p + "term"]:
-                st.session_state[p + "age"] = st.session_state[p + "term"] - 1
-                st.caption("Opening age adjusted to stay within the new loan term.")
-            if st.session_state[p + "age_mix"] == "Single cohort at specified MOB":
-                number(
-                    st,
-                    "Opening age (MOB)",
-                    "age",
-                    0,
-                    st.session_state[p + "term"] - 1,
-                    1,
+        )
+    if section in ("Forecasting", "Model assumptions"):
+        with st.expander("Propel reported results and preset basis", expanded=section == "Model assumptions"):
+            st.caption("USD. FY2024 and FY2025 are full years; Q2 2026 is three months. Latest available quarter as reviewed September 30, 2026.")
+            st.table(pd.DataFrame([{
+                "Period": r["period"], "Ending CLAB ($M)": round(r["clab"]/1e6, 2),
+                "CLAB YoY (%)": round((r["clab"]/r["prior_clab"]-1)*100, 2),
+                "Funded in period ($M)": round(r["originations"]/1e6, 2),
+                "Funding YoY (%)": round((r["originations"]/r["prior_originations"]-1)*100, 2),
+                "Revenue in period ($M)": round(r["revenue"]/1e6, 2),
+            } for r in HISTORY]))
+            st.write(f"Base opening CLAB: ${OPENING_CLAB/1e6:,.3f}M. Starting monthly funding: ${MONTHLY_FUNDING/1e6:,.3f}M (Q2 average). Monthly volume growth: {MONTHLY_GROWTH_PCT:.4f}% (same-quarter YoY funding growth compounded monthly).")
+            st.write("125,000 applications, the application/product splits and ticket sizes remain assumptions. Effective conversion is fitted to funded dollars; it is not Propel's disclosed approval rate. Repeat borrowing and line-of-credit redraws are approximated as new synthetic cohorts. Seasonality stays flat.")
+            st.write("Reported CLAB covers more programs than this four-segment POC. The reported revenue yield also includes fee income and is not substituted for a contractual interest rate. Synthetic losses, repayments and opening ages are not calibrated to Propel.")
+            if view == "Combined":
+                comparison = reference_path(horizon)[-1]
+                st.write(f"At month {horizon}, continuing historical CLAB growth of {CLAB_GROWTH:.2%} annually gives a reference balance of ${comparison/1e6:,.2f}M. The current model projects ${df.ending_gross_clab.iloc[-1]/1e6:,.2f}M: a gap of ${(df.ending_gross_clab.iloc[-1]-comparison)/1e6:,.2f}M. The reference is not forced into the forecast.")
+            else:
+                st.caption("Select Combined to compare model CLAB with the company-wide reference.")
+            st.markdown("Sources: " + " · ".join(f"[{r['period']} MD&A]({r['source']})" for r in HISTORY))
+
+
+    if section in ("Forecasting", "Monthly schedule"):
+        with st.container(border=True, key="schedule_panel"):
+            st.markdown(
+                '<h3 id="monthly-forecast-schedule">Monthly Revenue & Forecast Schedule</h3>',
+                unsafe_allow_html=True,
+            )
+            summary = df[
+                [
+                    "month",
+                    "applications",
+                    "originations",
+                    "ending_gross_clab",
+                    "charge_offs",
+                    "ending_reserve",
+                    "revenue",
+                    "new_provisions",
+                    "net_revenue",
+                ]
+            ].copy()
+            approved = sum(
+                forecasts[product].originations / all_inputs[product]["avg_loan_size"]
+                for product in selected
+            )
+            summary.insert(
+                2,
+                "Approval %",
+                np.divide(
+                    approved,
+                    df.applications,
+                    out=np.zeros(len(df)),
+                    where=df.applications.to_numpy() != 0,
+                )
+                * 100,
+            )
+            st.caption("Approval is application-weighted across the selected portfolio. " + " · ".join(f"{p}: {all_inputs[p]['approval_rate_pct']:.1f}%" for p in selected) + ". Driver inputs edit one product at a time.")
+            with st.expander("How reserve and charge-offs reconcile"):
+                st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
+                st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
+            for product, share in [("CreditFresh", cf_mix), ("MoneyKey", 1-cf_mix)]:
+                summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", brand_forecasts[product].revenue)
+            horizontal = summary.set_index("month").rename(columns=LABELS).T
+            horizontal.columns = [f"Month {m}" for m in summary.month]
+            horizontal.index.name = "Metric"
+            horizontal = horizontal.astype(float)
+            money_rows = [r for r in horizontal.index if r not in ("Applications", "Approval %")]
+            horizontal.loc[money_rows] /= 1_000_000
+            st.caption("Months run left to right · financial amounts in $ millions · applications are counts · approval is percent. Scroll horizontally for later months.")
+            st.dataframe(horizontal.style.format("{:,.2f}").format("{:,.0f}", subset=pd.IndexSlice[["Applications"], :]).format("{:.1f}%", subset=pd.IndexSlice[["Approval %"], :]), width="stretch", height=390)
+            download, details = st.columns([1, 4])
+            snapshot = {
+                "creditfresh_share": cf_mix,
+                "segment_risks": product_risks,
+                "manual_segment_risks": manual_product_risks,
+                "historical_segment_risks": product_fits,
+                "source": mode,
+                "curve_settings": curve_settings,
+                "scenario": st.session_state.get("scenario", "Base"),
+                "public_reference": {"as_of": "2026-06-30", "source": SOURCE_LATEST, "opening_clab_usd": OPENING_CLAB, "monthly_funding_usd": MONTHLY_FUNDING, "monthly_volume_growth_pct": MONTHLY_GROWTH_PCT, "clab_growth_yoy": CLAB_GROWTH},
+                "view": view,
+                "products": {
+                    product: {
+                        "active": all_inputs[product],
+                        "manual_rate_pct": st.session_state[f"driver_{product}_rate"],
+                        "manual_midpoint": st.session_state[f"driver_{product}_days"] / 30,
+                        "historical_rate_pct": st.session_state[f"driver_{product}_rate"],
+                        "historical_midpoint": st.session_state[f"driver_{product}_days"] / 30,
+                        "stress_pct": st.session_state[f"driver_{product}_stress"],
+                    }
+                    for product in PRODUCT_DEFAULTS
+                },
+            }
+            # Include every exported assumption, including inactive-source controls.
+            snapshot_key = json.dumps(snapshot, sort_keys=True)
+            prepared = st.session_state.get("prepared_excel")
+            if prepared is not None and prepared["snapshot_key"] != snapshot_key:
+                del st.session_state["prepared_excel"]
+                prepared = None
+            if prepared is None:
+                if download.button("Prepare Excel model", key="prepare_excel", width="stretch"):
+                    with st.spinner("Preparing Excel model..."):
+                        from excel_export import export_model
+                        prepared = {"snapshot_key": snapshot_key, "data": export_model(snapshot)}
+                        st.session_state["prepared_excel"] = prepared
+            if prepared is not None:
+                download.download_button(
+                    "Download Excel model",
+                    prepared["data"],
+                    "CLAB-revenue-model.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    on_click="ignore",
+                    width="stretch",
                 )
             st.caption(
-                "Opening reserve = remaining expected losses. New-loan provision: at origination."
+                "Excel includes editable blue inputs, linked formulas, full cohort calculations and balance checks. 36-month build; horizon totals match the selected forecast. Excel recalculates when opened."
             )
-
-all_inputs = {product: args(product, historical) for product in PRODUCT_DEFAULTS}
-segments = segment_forecasts(all_inputs, cf_mix, product_risks)
-forecasts = {kind: combine(segments[brand][kind] for brand in segments) for kind in all_inputs}
-brand_forecasts = {brand: combine(parts[kind] for kind in selected) for brand, parts in segments.items()}
-df = combine(brand_forecasts.values())
-current = df.iloc[focus - 1]
-manual_segments = segment_forecasts(all_inputs, cf_mix, manual_product_risks)
-manual_revenue = sum(manual_segments[b][k].revenue.sum() for b in manual_segments for k in selected)
-manual_provision = sum(manual_segments[b][k].new_provisions.sum() for b in manual_segments for k in selected)
-st.success(
-    f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
-)
-if historical:
-    st.caption(
-        f"Synthetic vintage with adjustments vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
-            "$", r"\$"
-        )
-    )
-if section in ("Forecasting", "Model assumptions"):
-    with st.expander("Propel reported results and preset basis", expanded=section == "Model assumptions"):
-        st.caption("USD. FY2024 and FY2025 are full years; Q2 2026 is three months. Latest available quarter as reviewed September 30, 2026.")
-        st.table(pd.DataFrame([{
-            "Period": r["period"], "Ending CLAB ($M)": round(r["clab"]/1e6, 2),
-            "CLAB YoY (%)": round((r["clab"]/r["prior_clab"]-1)*100, 2),
-            "Funded in period ($M)": round(r["originations"]/1e6, 2),
-            "Funding YoY (%)": round((r["originations"]/r["prior_originations"]-1)*100, 2),
-            "Revenue in period ($M)": round(r["revenue"]/1e6, 2),
-        } for r in HISTORY]))
-        st.write(f"Base opening CLAB: ${OPENING_CLAB/1e6:,.3f}M. Starting monthly funding: ${MONTHLY_FUNDING/1e6:,.3f}M (Q2 average). Monthly volume growth: {MONTHLY_GROWTH_PCT:.4f}% (same-quarter YoY funding growth compounded monthly).")
-        st.write("125,000 applications, the application/product splits and ticket sizes remain assumptions. Effective conversion is fitted to funded dollars; it is not Propel's disclosed approval rate. Repeat borrowing and line-of-credit redraws are approximated as new synthetic cohorts. Seasonality stays flat.")
-        st.write("Reported CLAB covers more programs than this four-segment POC. The reported revenue yield also includes fee income and is not substituted for a contractual interest rate. Synthetic losses, repayments and opening ages are not calibrated to Propel.")
-        if view == "Combined":
-            comparison = reference_path(horizon)[-1]
-            st.write(f"At month {horizon}, continuing historical CLAB growth of {CLAB_GROWTH:.2%} annually gives a reference balance of ${comparison/1e6:,.2f}M. The current model projects ${df.ending_gross_clab.iloc[-1]/1e6:,.2f}M: a gap of ${(df.ending_gross_clab.iloc[-1]-comparison)/1e6:,.2f}M. The reference is not forced into the forecast.")
-        else:
-            st.caption("Select Combined to compare model CLAB with the company-wide reference.")
-        st.markdown("Sources: " + " · ".join(f"[{r['period']} MD&A]({r['source']})" for r in HISTORY))
-
-if section == "Forecasting":
-    st.subheader("Annual forecast KPIs")
-    cards = []
-    for field, label, tint, balance in [
-        ("revenue", "Revenue", "hero", False),
-        ("new_provisions", "PLL / provision expense", "red", False),
-        ("net_revenue", "Net Revenue", "green", False),
-        ("originations", "Originations", "", False),
-        ("ending_gross_clab", "Gross CLAB", "", True),
-        ("net_clab", "Net CLAB", "", True),
-    ]:
-        values = []
-        for year in (1, 2):
-            period = df[(df.month > (year-1)*12) & (df.month <= year*12)]
-            complete = len(period) == 12
-            value = _fmt_dollar_scaled(period[field].iloc[-1] if balance else period[field].sum()) if complete else "—"
-            note = "year-end" if balance else "annual total"
-            if not complete:
-                note = "requires " + str(year*12) + " forecast months"
-            values.append(f'<div class="kpi-period"><div class="kpi-note">Year {year} · {note}</div><div class="kpi-value">{value}</div></div>')
-        yearly = [df[(df.month > j*12) & (df.month <= (j+1)*12)] for j in range(2)]
-        if field == "new_provisions":
-            ratios = [f"{x.new_provisions.sum()/x.revenue.sum():.1%}" if len(x)==12 and x.revenue.sum()!=0 else "—" for x in yearly]
-            footer = f"PLL / revenue: Y1 {ratios[0]} · Y2 {ratios[1]}<br>Reported benchmark: 45–50% · calibration pending"
-        elif all(len(x)==12 for x in yearly):
-            totals = [x[field].iloc[-1] if balance else x[field].sum() for x in yearly]
-            change = f"{(totals[1]/totals[0]-1)*100:+.1f}%" if totals[0] else "—"
-            footer = f"Year 2 vs Year 1: {change}" + (" · closing balance" if balance else " · annual total")
-        else:
-            footer = "Extend horizon to 24 months for annual comparison"
-        series = df[field].to_numpy(dtype=float)
-        low, high = min(0.0, float(series.min())), max(0.0, float(series.max()))
-        span = high-low or 1.0
-        points = " ".join(f"{i*300/max(len(series)-1,1):.1f},{64-(v-low)/span*56:.1f}" for i,v in enumerate(series))
-        color = "#7dd3fc" if tint == "hero" else "#dc4561" if tint == "red" else "#15966b" if tint == "green" else "#4675bd"
-        spark = f'<svg viewBox="0 0 300 72" width="100%" height="72" role="img" aria-label="{label} monthly trend"><line x1="0" y1="{64-low*-56/span:.1f}" x2="300" y2="{64-low*-56/span:.1f}" stroke="{color}" opacity="0.2"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round"/></svg><div class="kpi-note">Monthly trend · M1 {_fmt_dollar_scaled(series[0])} → M{len(series)} {_fmt_dollar_scaled(series[-1])}</div>'
-        cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-years">{"".join(values)}</div>{spark}<div class="kpi-footer">{footer}</div></div>')
-    st.markdown('<div class="kpi-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
-    st.caption("Year 1 = forecast months 1–12; Year 2 = months 13–24. Balances are year-end snapshots; all other KPIs are annual totals.")
-
-    left, right = st.columns([1.1, 1])
-    with left, st.container(border=True, key="revenue_panel"):
-        st.subheader("Monthly Revenue Trend")
-        fig = go.Figure()
-        for field, label, color in [
-            ("revenue", "Revenue", "#00ad60"),
-            ("net_revenue", "Net revenue", "#111f65"),
-        ]:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.month,
-                    y=df[field],
-                    name=label,
-                    line=dict(
-                        color=color,
-                        width=3,
-                        dash="dash" if field == "net_revenue" else "solid",
+            details.caption(
+                f"Horizon revenue {_fmt_dollar_scaled(df.revenue.sum())} · Provision expense {_fmt_dollar_scaled(df.new_provisions.sum())} · Net revenue {_fmt_dollar_scaled(df.net_revenue.sum())}".replace(
+                    "$", r"\$"
+                )
+            )
+            with st.expander("Full balance reconciliation & quarterly reporting"):
+                period = st.radio("Table period", ["Monthly", "Quarterly"], horizontal=True)
+                table(df if period == "Monthly" else aggregate_to_quarterly(df))
+                if period == "Quarterly" and horizon % 3:
+                    st.caption(
+                        "Only complete quarters shown; monthly schedule includes the remaining months."
+                    )
+                st.download_button(
+                    "Download assumptions",
+                    json.dumps(
+                        snapshot,
+                        indent=2,
                     ),
+                    "assumptions.json",
+                    "application/json",
                 )
-            )
-        fig.add_trace(
-            go.Bar(
-                x=df.month,
-                y=df.new_provisions,
-                name="Provision expense",
-                marker_color="#f34c60",
-                opacity=0.7,
-            )
-        )
-        st.plotly_chart(chart(fig, "$ / month"), width="stretch")
-        opening = df.iloc[0]
-        st.markdown(
-            f'<div class="note">Month 1 earns on {_fmt_dollar_scaled(opening.beginning_gross_clab)} of opening loans, less charge-offs. Its existing reserve is carried forward.</div>',
-            unsafe_allow_html=True,
-        )
-        runoff = current.principal_repaid + current.charge_offs
-        st.caption(
-            f"Month {focus}: new originations {_fmt_dollar_scaled(current.originations)} vs repayments {_fmt_dollar_scaled(current.principal_repaid)} and charge-offs {_fmt_dollar_scaled(current.charge_offs)}. Gross CLAB {'falls' if runoff>current.originations else 'rises'} by {_fmt_dollar_scaled(abs(current.originations-runoff))}. Revenue follows the earning balance. Opening age assumptions affect the initial runoff.".replace(
-                "$", r"\$"
-            )
-        )
-    with right, st.container(border=True, key="curve_panel"):
-        st.subheader("Applied curves vs synthetic history")
-        render_curve_comparison(product_risks, product_fits)
-        st.caption("Charge-offs use incremental defaults × principal still owed. PLL is the expected lifetime principal loss on new originations, booked upfront. Terms remain 12/24 months.")
 
-if section in ("Forecasting", "Monthly schedule"):
-    with st.container(border=True, key="schedule_panel"):
-        st.markdown(
-            '<h3 id="monthly-forecast-schedule">Monthly Revenue & Forecast Schedule</h3>',
-            unsafe_allow_html=True,
-        )
-        summary = df[
-            [
-                "month",
-                "applications",
-                "originations",
-                "ending_gross_clab",
-                "charge_offs",
-                "ending_reserve",
-                "revenue",
-                "new_provisions",
-                "net_revenue",
-            ]
-        ].copy()
-        approved = sum(
-            forecasts[product].originations / all_inputs[product]["avg_loan_size"]
-            for product in selected
-        )
-        summary.insert(
-            2,
-            "Approval %",
-            np.divide(
-                approved,
-                df.applications,
-                out=np.zeros(len(df)),
-                where=df.applications.to_numpy() != 0,
-            )
-            * 100,
-        )
-        st.caption("Approval is application-weighted across the selected portfolio. " + " · ".join(f"{p}: {all_inputs[p]['approval_rate_pct']:.1f}%" for p in selected) + ". Driver inputs edit one product at a time.")
-        with st.expander("How reserve and charge-offs reconcile"):
-            st.write("Reserve = beginning reserve + PLL on new originations − charge-offs. Opening reserve covers future expected losses on the existing book and is not booked again as expense.")
-            st.write("Charge-offs = original-equivalent cohort exposure × incremental default probability × scheduled principal fraction before default. Sum across cohorts. LGD is 100%; no recoveries. Charge-offs reduce gross loans and reserve, not net revenue a second time.")
-        for product, share in [("CreditFresh", cf_mix), ("MoneyKey", 1-cf_mix)]:
-            summary.insert(summary.columns.get_loc("revenue"), f"{product} revenue", brand_forecasts[product].revenue)
-        horizontal = summary.set_index("month").rename(columns=LABELS).T
-        horizontal.columns = [f"Month {m}" for m in summary.month]
-        horizontal.index.name = "Metric"
-        horizontal = horizontal.astype(float)
-        money_rows = [r for r in horizontal.index if r not in ("Applications", "Approval %")]
-        horizontal.loc[money_rows] /= 1_000_000
-        st.caption("Months run left to right · financial amounts in $ millions · applications are counts · approval is percent. Scroll horizontally for later months.")
-        st.dataframe(horizontal.style.format("{:,.2f}").format("{:,.0f}", subset=pd.IndexSlice[["Applications"], :]).format("{:.1f}%", subset=pd.IndexSlice[["Approval %"], :]), width="stretch", height=390)
-        download, details = st.columns([1, 4])
-        snapshot = {
-            "creditfresh_share": cf_mix,
-            "segment_risks": product_risks,
-            "manual_segment_risks": manual_product_risks,
-            "historical_segment_risks": product_fits,
-            "source": mode,
-            "curve_settings": curve_settings,
-            "scenario": st.session_state.get("scenario", "Base"),
-            "public_reference": {"as_of": "2026-06-30", "source": SOURCE_LATEST, "opening_clab_usd": OPENING_CLAB, "monthly_funding_usd": MONTHLY_FUNDING, "monthly_volume_growth_pct": MONTHLY_GROWTH_PCT, "clab_growth_yoy": CLAB_GROWTH},
-            "view": view,
-            "products": {
-                product: {
-                    "active": all_inputs[product],
-                    "manual_rate_pct": st.session_state[f"driver_{product}_rate"],
-                    "manual_midpoint": st.session_state[f"driver_{product}_days"] / 30,
-                    "historical_rate_pct": st.session_state[f"driver_{product}_rate"],
-                    "historical_midpoint": st.session_state[f"driver_{product}_days"] / 30,
-                    "stress_pct": st.session_state[f"driver_{product}_stress"],
-                }
-                for product in PRODUCT_DEFAULTS
-            },
-        }
-        # Include every exported assumption, including inactive-source controls.
-        snapshot_key = json.dumps(snapshot, sort_keys=True)
-        prepared = st.session_state.get("prepared_excel")
-        if prepared is not None and prepared["snapshot_key"] != snapshot_key:
-            del st.session_state["prepared_excel"]
-            prepared = None
-        if prepared is None:
-            if download.button("Prepare Excel model", key="prepare_excel", width="stretch"):
-                with st.spinner("Preparing Excel model..."):
-                    prepared = {"snapshot_key": snapshot_key, "data": export_model(snapshot)}
-                    st.session_state["prepared_excel"] = prepared
-        if prepared is not None:
-            download.download_button(
-                "Download Excel model",
-                prepared["data"],
-                "CLAB-revenue-model.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                on_click="ignore",
-                width="stretch",
-            )
-        st.caption(
-            "Excel includes editable blue inputs, linked formulas, full cohort calculations and balance checks. 36-month build; horizon totals match the selected forecast. Excel recalculates when opened."
-        )
-        details.caption(
-            f"Horizon revenue {_fmt_dollar_scaled(df.revenue.sum())} · Provision expense {_fmt_dollar_scaled(df.new_provisions.sum())} · Net revenue {_fmt_dollar_scaled(df.net_revenue.sum())}".replace(
-                "$", r"\$"
-            )
-        )
-        with st.expander("Full balance reconciliation & quarterly reporting"):
-            period = st.radio("Table period", ["Monthly", "Quarterly"], horizontal=True)
-            table(df if period == "Monthly" else aggregate_to_quarterly(df))
-            if period == "Quarterly" and horizon % 3:
-                st.caption(
-                    "Only complete quarters shown; monthly schedule includes the remaining months."
-                )
-            st.download_button(
-                "Download assumptions",
-                json.dumps(
-                    snapshot,
-                    indent=2,
-                ),
-                "assumptions.json",
-                "application/json",
-            )
+    if section == "Forecasting":
+        st.subheader("Annual forecast KPIs")
+        cards = []
+        for field, label, tint, balance in [
+            ("revenue", "Revenue", "hero", False),
+            ("new_provisions", "PLL / provision expense", "red", False),
+            ("net_revenue", "Net Revenue", "green", False),
+            ("originations", "Originations", "", False),
+            ("ending_gross_clab", "Gross CLAB", "", True),
+            ("net_clab", "Net CLAB", "", True),
+        ]:
+            values = []
+            for year in (1, 2):
+                period = df[(df.month > (year-1)*12) & (df.month <= year*12)]
+                complete = len(period) == 12
+                value = _fmt_dollar_scaled(period[field].iloc[-1] if balance else period[field].sum()) if complete else "—"
+                note = "year-end" if balance else "annual total"
+                if not complete:
+                    note = "requires " + str(year*12) + " forecast months"
+                values.append(f'<div class="kpi-period"><div class="kpi-note">Year {year} · {note}</div><div class="kpi-value">{value}</div></div>')
+            yearly = [df[(df.month > j*12) & (df.month <= (j+1)*12)] for j in range(2)]
+            if field == "new_provisions":
+                ratios = [f"{x.new_provisions.sum()/x.revenue.sum():.1%}" if len(x)==12 and x.revenue.sum()!=0 else "—" for x in yearly]
+                footer = f"PLL / revenue: Y1 {ratios[0]} · Y2 {ratios[1]}<br>Reported benchmark: 45–50% · calibration pending"
+            elif all(len(x)==12 for x in yearly):
+                totals = [x[field].iloc[-1] if balance else x[field].sum() for x in yearly]
+                change = f"{(totals[1]/totals[0]-1)*100:+.1f}%" if totals[0] else "—"
+                footer = f"Year 2 vs Year 1: {change}" + (" · closing balance" if balance else " · annual total")
+            else:
+                footer = "Extend horizon to 24 months for annual comparison"
+            series = df[field].to_numpy(dtype=float)
+            low, high = min(0.0, float(series.min())), max(0.0, float(series.max()))
+            span = high-low or 1.0
+            points = " ".join(f"{i*300/max(len(series)-1,1):.1f},{64-(v-low)/span*56:.1f}" for i,v in enumerate(series))
+            color = "#7dd3fc" if tint == "hero" else "#dc4561" if tint == "red" else "#15966b" if tint == "green" else "#4675bd"
+            spark = f'<svg viewBox="0 0 300 72" width="100%" height="72" role="img" aria-label="{label} monthly trend"><line x1="0" y1="{64-low*-56/span:.1f}" x2="300" y2="{64-low*-56/span:.1f}" stroke="{color}" opacity="0.2"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round"/></svg><div class="kpi-note">Monthly trend · M1 {_fmt_dollar_scaled(series[0])} → M{len(series)} {_fmt_dollar_scaled(series[-1])}</div>'
+            cards.append(f'<div class="kpi {tint}"><div class="kpi-label">{label}</div><div class="kpi-years">{"".join(values)}</div>{spark}<div class="kpi-footer">{footer}</div></div>')
+        st.markdown('<div class="kpi-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
+        st.caption("Year 1 = forecast months 1–12; Year 2 = months 13–24. Balances are year-end snapshots; all other KPIs are annual totals.")
+
+
+        render_forecast_charts(df, current, focus, product_risks, product_fits)
+
+if section != "Vintage Analysis & Overlay":
+    render_driver_panel_and_forecast()
 
 if section == "Vintage Analysis & Overlay":
     st.subheader("Applied curves vs synthetic history")
-    render_curve_comparison(product_risks, product_fits)
+    if st.toggle("Show vintage curve comparison", value=False, key="show_vintage_comparison"):
+        render_curve_comparison(product_risks, product_fits)
     st.caption("The forecast uses the source and adjustments selected above. Historical triangles below always show the original 2,000,000-loan synthetic dataset; edits do not rewrite history.")
     from vintage_analysis import render_vintage_analysis
     render_vintage_analysis()

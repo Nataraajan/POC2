@@ -19,7 +19,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 # The live demo calls these directly — no duplicated pipeline logic in this file.
@@ -78,6 +77,7 @@ def show_triangle(triangle, product):
 
 def curve_figure(overlay, reference=None, height=380, names=None):
     """names: optional {product: legend label} for the solid lines; defaults to the product name."""
+    import plotly.graph_objects as go
     fig = go.Figure()
     if reference is not None:
         for product, color in PRODUCT_COLORS.items():
@@ -210,5 +210,6 @@ def render_vintage_analysis():
     # ===========================================================================
     st.divider()
     heading("Derived default curve")
-    st.plotly_chart(curve_figure(overlay_df), width="stretch")
+    if st.toggle("Show derived vintage chart", value=False, key="show_vintage_chart"):
+        st.plotly_chart(curve_figure(overlay_df), width="stretch")
 

@@ -40,3 +40,20 @@ Desktop Excel and LibreOffice were not available for native recalculation verifi
 The export lifecycle test confirms no workbook generation on initial load or input changes, reuse after preparation, and invalidation/rebuild after assumptions change. Workbook calculations are unchanged.
 
 Reported-volume validation checks the exact $639,083,326 opening balance, 125,000 starting applications, initial funding of $243,423,212 / 3, and the 12-month funding ratio of $243,423,212 / $194,394,548. Scenario/reset checks use compounded growth. The reported CLAB growth comparison does not override model balances. Public data covers FY2024, FY2025 and Q2 2026, with primary-source URLs in `propel_reference.py` and README. No credit or repayment calibration is claimed.
+
+
+### Warm-rerun hot path (September 30, 2026)
+
+Forecast outputs, curve definitions, and Excel formulas are unchanged. Plotly is
+imported only when a chart is requested; Excel export imports only after Prepare
+Excel model is clicked. The forecast cache hashes driver inputs (including horizon),
+brand mix, resolved curves, and source settings; it stores only model data.
+Manual comparison and each chart default off. The schedule precedes forecast
+charts. Drivers and dependent outputs share a Streamlit fragment; vintage rendering
+remains confined to its navigation section and uses precomputed data only.
+
+Local Streamlit AppTest, eight identical warm full reruns after one initial load:
+median before 254.8 ms, after 132.0 ms (48.2% reduction). These are local server-side
+measurements, not Streamlit Cloud wake-up or browser/network timing. Both runs use
+the default forecast, 24 months, with the after version's optional charts and
+manual comparison off. No page splitting or raw loan-file loading was introduced.

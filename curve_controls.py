@@ -1,6 +1,5 @@
 """Shared controls for forecasting and the single vintage analysis workflow."""
 import streamlit as st
-import plotly.graph_objects as go
 import numpy as np
 from segments import SEGMENTS
 from curve_model import SYNTHETIC, MANUAL, SOURCES, default_settings, build_curves
@@ -53,6 +52,7 @@ def render_controls(empirical, expanded=False):
 
 
 def render_curve_comparison(applied, empirical):
+    import plotly.graph_objects as go
     segment = st.selectbox("Curve segment", list(SEGMENTS), key="curve_segment")
     term = SEGMENTS[segment]["term_months"]
     ages = np.arange(term + 1)
