@@ -74,7 +74,7 @@ h1,h2,h3{color:#263a50}
 [data-testid="stSidebar"]{background:#263a50}
 .brand span{color:#68b8ff!important}
 .st-key-navigation label{padding:10px 12px!important;margin:4px 0!important;border-radius:8px;transition:background .15s}
-.st-key-navigation label > div:first-of-type{display:none!important}
+.st-key-navigation label > div > div:first-child:not([data-testid]){display:none!important}
 .st-key-navigation label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
 .st-key-navigation label:hover{background:#344e69}
 .st-key-navigation label:has(input:checked){background:#0078d9!important;box-shadow:inset 3px 0 #a8d8ff}
