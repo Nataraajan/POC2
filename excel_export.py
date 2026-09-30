@@ -12,6 +12,9 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 from clab_forecast_engine_v2 import forecast_clab_v2
+from segments import segment_key
+import re
+from copy import deepcopy
 
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 ET.register_namespace("", NS)
@@ -52,15 +55,18 @@ def input_cells(snapshot):
         "E8": snapshot["scenario"],
         "E9": {"Combined": 1, "Short-Term": 2, "Installment": 3}[snapshot["view"]],
     }
-    if snapshot.get("brand_risks"):
-        for brand, c in [("CreditFresh","E"),("MoneyKey","F")]:
-            active=snapshot["brand_risks"][brand]
-            manual=snapshot.get("manual_brand_risks",snapshot["brand_risks"])[brand]
-            historical=snapshot.get("historical_brand_risks",snapshot["brand_risks"])[brand]
+    if snapshot.get("segment_risks"):
+        for brand, c, payoff_col in [("CreditFresh Short-Term","E","H"),("MoneyKey Short-Term","F","I"),("CreditFresh Installment","J","M"),("MoneyKey Installment","K","N")]:
+            out[f"{c}51"] = brand
+            out[f"{c}64"] = brand + " default"
+            out[f"{payoff_col}64"] = brand + " payoff"
+            active=snapshot["segment_risks"][brand]
+            manual=snapshot.get("manual_segment_risks",snapshot["segment_risks"])[brand]
+            historical=snapshot.get("historical_segment_risks",snapshot["segment_risks"])[brand]
             if active.get("default_shape") is not None:
                 for m,(d,pay) in enumerate(zip(active["default_shape"],active["payoff_shape"])):
                     out[f"{c}{65+m}"]=d
-                    out[f"{'H' if c=='E' else 'I'}{65+m}"]=pay
+                    out[f"{payoff_col}{65+m}"]=pay
             for r,v in [(52,manual["total_default_rate_pct"]/100),(53,manual["midpoint_months"]),(54,historical["total_default_rate_pct"]/100),(55,historical["midpoint_months"])]:
                 out[f"{c}{r}"]=v
     for p, c in [("Short-Term", "E"), ("Installment", "F")]:
@@ -92,17 +98,17 @@ def cached_schedules(snapshot):
     """Opening preview values match the app; formulas remain the authority in Excel."""
     builds = {}
     segment_caches = {}
-    if snapshot.get("brand_risks"):
+    if snapshot.get("segment_risks"):
         from product_forecast import segment_forecasts, combine
         inputs={p:{**item["active"],"horizon_months":36} for p,item in snapshot["products"].items()}
-        segments=segment_forecasts(inputs,snapshot.get("creditfresh_share",.8),snapshot["brand_risks"])
-        opening_segments=segment_forecasts({p:{**a,"monthly_applications_base":0} for p,a in inputs.items()},snapshot.get("creditfresh_share",.8),snapshot["brand_risks"])
+        segments=segment_forecasts(inputs,snapshot.get("creditfresh_share",.8),snapshot["segment_risks"])
+        opening_segments=segment_forecasts({p:{**a,"monthly_applications_base":0} for p,a in inputs.items()},snapshot.get("creditfresh_share",.8),snapshot["segment_risks"])
         for brand,weight,offset in [("CreditFresh",snapshot.get("creditfresh_share",.8),2),("MoneyKey",1-snapshot.get("creditfresh_share",.8),4)]:
             sub={**snapshot,"products":{}}
-            sub.pop("brand_risks",None)
+            sub.pop("segment_risks",None)
             for p,item in snapshot["products"].items():
                 base=item["active"]
-                sub["products"][p]={**item,"active":{**base,"monthly_applications_base":base["monthly_applications_base"]*weight,"opening_gross_clab":base["opening_gross_clab"]*weight,**snapshot["brand_risks"][brand]}}
+                sub["products"][p]={**item,"active":{**base,"monthly_applications_base":base["monthly_applications_base"]*weight,"opening_gross_clab":base["opening_gross_clab"]*weight,**{k:v for k,v in snapshot["segment_risks"][segment_key(brand,p)].items() if k in ("total_default_rate_pct", "midpoint_months", "default_shape", "payoff_shape")}}}
                 sub["products"][p]["active"].pop("days_to_default",None)
             cache=cached_schedules(sub)
             segment_caches[3+offset]=cache[3];segment_caches[4+offset]=cache[4]
@@ -112,7 +118,7 @@ def cached_schedules(snapshot):
         args = {**item["active"], "horizon_months": 36}
         f = forecast_clab_v2(**args)
         opening = forecast_clab_v2(**{**args, "monthly_applications_base": 0})
-        if snapshot.get("brand_risks"):
+        if snapshot.get("segment_risks"):
             f=combine(segments[b][product] for b in segments)
             opening=combine(opening_segments[b][product] for b in segments)
         rows = {r: f[name].to_numpy() for r, name in ROWS.items()}
@@ -150,7 +156,7 @@ def cached_schedules(snapshot):
     share = snapshot.get("creditfresh_share", 0.8)
     short = builds["Short-Term"][24] if "Short-Term" in selected else np.zeros(36)
     installment = builds["Installment"][24] if "Installment" in selected else np.zeros(36)
-    if snapshot.get("brand_risks"):
+    if snapshot.get("segment_risks"):
         cfshort=segments["CreditFresh"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
         cfins=segments["CreditFresh"]["Installment"].revenue.to_numpy() if "Installment" in selected else np.zeros(36)
         mkshort=segments["MoneyKey"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
@@ -204,6 +210,50 @@ def _set_value(cell, value, keep_formula=False):
         ET.SubElement(cell, f"{{{NS}}}v").text = str(float(value))
 
 
+def _segment_template(root, idx):
+    """Extend the legacy two-brand template to four independent segment inputs."""
+    if idx == 2:
+        cells = {c.get('r'): c for c in root.iter(f'{{{NS}}}c')}
+        rows = {int(r.get('r')): r for r in root.iter(f'{{{NS}}}row')}
+        for old, new in [('E','J'), ('F','K'), ('H','M'), ('I','N')]:
+            for row in list(range(51,60)) + list(range(64,102)):
+                source = cells.get(f'{old}{row}')
+                if source is None:
+                    continue
+                dest = cells.get(f'{new}{row}')
+                clone = deepcopy(source)
+                clone.set('r', f'{new}{row}')
+                formula = clone.find(f'{{{NS}}}f')
+                if formula is not None:
+                    formula.text = re.sub(r'(\$?)' + old + r'(\$?)(5[2-9])',
+                                          lambda m: m[1]+new+m[2]+m[3], formula.text)
+                if dest is not None:
+                    rows[row].remove(dest)
+                rows[row].append(clone)
+        # Excel requires cells in column order.
+        def col_index(cell):
+            value=0
+            for ch in re.match(r'[A-Z]+',cell.get('r'))[0]:
+                value=value*26+ord(ch)-64
+            return value
+        for row in rows.values():
+            row[:] = sorted(row, key=col_index)
+        cells = {c.get('r'): c for c in root.iter(f'{{{NS}}}c')}
+        for col, term_col, term in [('E','E',12),('F','E',12),('J','F',24),('K','F',24)]:
+            formula = cells[f'{col}58'].find(f'{{{NS}}}f')
+            if formula is not None:
+                formula.text = f'IF({term_col}16={term},{formula.text},NA())'
+        _set_value(cells['C50'], 'Synthetic segment credit assumptions (12/24 months only)')
+    if idx in (6,8):
+        mapping = {'E':'J','H':'M'} if idx == 6 else {'F':'K','I':'N'}
+        # Only credit assumptions move; volumes/yields/terms keep their loan-type cells.
+        for formula in root.iter(f'{{{NS}}}f'):
+            for old,new in mapping.items():
+                formula.text = re.sub(r"('Assumptions'!\$?)"+old+r"(\$?)(5[2-9]|6[5-9]|[7-9][0-9]|10[01])(?![0-9])",
+                                      lambda m: m[1]+new+m[2]+m[3], formula.text)
+                formula.text = formula.text.replace(f':${old}$101',f':${new}$101')
+
+
 def export_model(snapshot):
     overrides = input_cells(snapshot)
     caches = cached_schedules(snapshot)
@@ -218,6 +268,7 @@ def export_model(snapshot):
             ) and entry.filename.endswith(".xml"):
                 idx = int(entry.filename.split("sheet")[-1].split(".")[0])
                 root = ET.fromstring(data)
+                _segment_template(root, idx)
                 for cell in root.iter(f"{{{NS}}}c"):
                     address = cell.get("r")
                     if idx == 2 and address in overrides:

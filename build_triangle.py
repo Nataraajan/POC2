@@ -11,15 +11,16 @@ Extraction -> Computation -> Output, made explicit and visible:
      Skipping this would make every vintage look fully mature, which is
      wrong and would make the resulting curve artificially clean.
   3. OUTPUT: overlay_curve.csv, derived from the CENSORED triangle (never
-     from raw default_flag on the full file) — the only file the
-     forecast model imports.
+     from raw default_flag on the full file). Payment curves use the same
+     mature cohort selection and feed the forecast through payment_curves.json.
 """
 
 import sqlite3
 import pandas as pd
 
 OBSERVATION_DATE = pd.Period("2026-06", freq="M")  # "today" — end of the last vintage month
-TERMS = {"CreditFresh": 9, "MoneyKey": 5}
+from segments import SEGMENTS
+TERMS = {key: cfg["term_months"] for key, cfg in SEGMENTS.items()}
 
 
 def months_elapsed(vintage_str: str) -> int:
@@ -56,6 +57,10 @@ SQL_COLUMNS = ["product", "vintage", "default_mob", "ticket"]  # the only column
 
 
 def build_triangle(loans_df: pd.DataFrame) -> pd.DataFrame:
+    if not set(loans_df["product"]).issubset(TERMS):
+        raise ValueError("Loan history must use exact brand/loan-type segments")
+    if not loans_df["term_months"].eq(loans_df["product"].map(TERMS)).all():
+        raise ValueError("Loan terms do not match their segments")
     conn = sqlite3.connect(":memory:")
     # Only the columns the SQL reads go into SQLite — identical query results, and copying rows
     # into the database is most of this function's cost.
@@ -63,6 +68,7 @@ def build_triangle(loans_df: pd.DataFrame) -> pd.DataFrame:
 
     defaults_by_mob = pd.read_sql(RAW_AGGREGATION_SQL, conn)
     originations_by_vintage = pd.read_sql(ORIGINATIONS_SQL, conn)
+    conn.close()
     # One dict lookup per triangle cell, instead of filtering the aggregate table for every cell.
     nco_by_cell = {(product, vintage, mob): dollars for product, vintage, mob, dollars in
                    defaults_by_mob[["product", "vintage", "mob", "dollars_defaulted_at_mob"]].itertuples(index=False)}
@@ -89,25 +95,24 @@ def build_triangle(loans_df: pd.DataFrame) -> pd.DataFrame:
 
 # --- Step 3: OUTPUT — overlay curve, built from the CENSORED triangle only ---
 def build_overlay_curve(triangle: pd.DataFrame) -> pd.DataFrame:
-    """For each (product, mob), pool ONLY the vintages old enough to have
-    actually reached that mob — never average incomplete/censored vintages
-    in with mature ones, and never include a mob a vintage hasn't reached."""
-    rows = []
-    for product in triangle["product"].unique():
-        product_triangle = triangle[triangle["product"] == product]
-        term = TERMS[product]
-        for mob in range(0, term + 1):
-            eligible = product_triangle[product_triangle["mob"] == mob]  # already censored — only eligible rows exist here at all
-            if len(eligible) == 0:
-                continue
-            pooled_nco = eligible["nco"].sum()
-            pooled_originations = eligible["originations"].sum()
-            incremental_rate_at_mob = pooled_nco / pooled_originations if pooled_originations > 0 else 0.0
-            rows.append({"product": product, "mob": mob, "incremental_rate": incremental_rate_at_mob})
+    """Pool fully mature vintages per segment, with one denominator at every age.
 
-    overlay = pd.DataFrame(rows)
-    overlay["cum_default"] = overlay.groupby("product")["incremental_rate"].cumsum()
-    return overlay[["product", "mob", "cum_default"]]
+    The full censored triangle remains available for inspecting recent vintages.
+    Matching the payment estimator's cohort eligibility makes the plotted default
+    curve exactly the default curve passed into the forecast.
+    """
+    rows = []
+    for product, term in TERMS.items():
+        product_triangle = triangle[triangle["product"] == product]
+        mature = product_triangle.loc[product_triangle.mob == term, "vintage"]
+        eligible = product_triangle[product_triangle.vintage.isin(mature)]
+        if eligible.empty:
+            raise ValueError(f"No fully observed vintages for {product}")
+        pooled = eligible.groupby("mob").agg(nco=("nco", "sum"), originations=("originations", "sum"))
+        cumulative = (pooled.nco / pooled.originations).cumsum()
+        rows.extend({"product": product, "mob": int(mob), "cum_default": float(value)}
+                    for mob, value in cumulative.items())
+    return pd.DataFrame(rows)
 
 
 if __name__ == "__main__":

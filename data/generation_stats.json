@@ -1,43 +1,100 @@
 {
   "generation": {
-    "run_at": "2026-09-11T15:24:26",
+    "seed": 42,
     "total_rows": 2000000,
-    "generation_seconds": 1.3205657005310059,
-    "loan_id_unique": true,
-    "vintages": 24,
+    "generation_seconds": 0.7685185000300407,
     "vintage_range": [
-      "2024-07",
+      "2023-07",
       "2026-06"
     ],
-    "product_mix_pct": {
-      "CreditFresh": {
-        "observed": 58.0002,
-        "target": 58.0
+    "vintages": 36,
+    "loan_id_unique": true,
+    "segment_assumptions": {
+      "CreditFresh Short-Term": {
+        "brand": "CreditFresh",
+        "loan_type": "Short-Term",
+        "share": 0.232,
+        "ticket": 1800.0,
+        "term_months": 12,
+        "lifetime_default": 0.2,
+        "default_k": 2.2,
+        "payoff_k": 2.5
       },
-      "MoneyKey": {
-        "observed": 41.9998,
-        "target": 42.0
+      "CreditFresh Installment": {
+        "brand": "CreditFresh",
+        "loan_type": "Installment",
+        "share": 0.348,
+        "ticket": 1800.0,
+        "term_months": 24,
+        "lifetime_default": 0.16,
+        "default_k": 1.6,
+        "payoff_k": 1.8
+      },
+      "MoneyKey Short-Term": {
+        "brand": "MoneyKey",
+        "loan_type": "Short-Term",
+        "share": 0.168,
+        "ticket": 700.0,
+        "term_months": 12,
+        "lifetime_default": 0.36,
+        "default_k": 2.8,
+        "payoff_k": 3.0
+      },
+      "MoneyKey Installment": {
+        "brand": "MoneyKey",
+        "loan_type": "Installment",
+        "share": 0.252,
+        "ticket": 700.0,
+        "term_months": 24,
+        "lifetime_default": 0.28,
+        "default_k": 2.0,
+        "payoff_k": 2.1
+      }
+    },
+    "product_mix_pct": {
+      "CreditFresh Short-Term": {
+        "observed": 23.19905,
+        "target": 23.200000000000003
+      },
+      "CreditFresh Installment": {
+        "observed": 34.79915,
+        "target": 34.8
+      },
+      "MoneyKey Short-Term": {
+        "observed": 16.79895,
+        "target": 16.8
+      },
+      "MoneyKey Installment": {
+        "observed": 25.202849999999998,
+        "target": 25.2
       }
     },
     "default_rate_vs_target": {
-      "CreditFresh": {
-        "observed": 0.1998389660725308,
+      "CreditFresh Short-Term": {
+        "observed": 0.20054916041820678,
         "target": 0.2
       },
-      "MoneyKey": {
-        "observed": 0.352260010761956,
+      "CreditFresh Installment": {
+        "observed": 0.1605757611895693,
+        "target": 0.16
+      },
+      "MoneyKey Short-Term": {
+        "observed": 0.3581354787055143,
         "target": 0.36
+      },
+      "MoneyKey Installment": {
+        "observed": 0.2810555155468528,
+        "target": 0.28
       }
     }
   },
   "triangle": {
-    "run_at": "2026-09-11T15:24:39",
+    "run_at": "2026-09-30T06:16:31",
     "rows_loaded": 2000000,
-    "load_seconds": 0.19935941696166992,
-    "triangle_build_seconds": 11.21558141708374,
+    "triangle_build_seconds": 6.32324289996177,
     "observation_date": "2026-06",
-    "triangle_cells": 324,
-    "cells_excluded_by_censoring": 60,
+    "triangle_cells": 1980,
+    "cells_excluded_by_censoring": 756,
     "sql_queries": {
       "defaults_by_mob": "SELECT\n    product,\n    vintage,\n    default_mob AS mob,\n    COUNT(*) AS loans_defaulted_at_mob,\n    SUM(ticket) AS dollars_defaulted_at_mob\nFROM loans\nWHERE default_mob >= 0\nGROUP BY product, vintage, default_mob",
       "originations_by_vintage": "SELECT product, vintage, COUNT(*) AS loan_count, SUM(ticket) AS originations\nFROM loans\nGROUP BY product, vintage"
