@@ -230,11 +230,11 @@ def test_single_vintage_workflow_and_adjustments():
     assert len(at.dataframe) >= 4
     triangle = at.dataframe[-1].value.copy()
     assert "Vintage overlay" not in at.radio(key="navigation").options
-    key="driver_curve_Synthetic vintage_CreditFresh Line of Credit_default_timing"
-    at.number_input(key=key).set_value(.5).run()
+    key="driver_curve_Synthetic vintage_CreditFresh Line of Credit_default_shift_months"
+    at.number_input(key=key).set_value(-1).run()
     pd.testing.assert_frame_equal(at.dataframe[-1].value, triangle)
     at.radio(key="navigation").set_value("Forecasting").run()
-    assert at.number_input(key=key).value == .5
+    assert at.number_input(key=key).value == -1
     assert not np.allclose(before["Provision expense"], full(at)["Provision expense"])
     next(b for b in at.button if b.label == "Reset this source's curves").click().run()
     pd.testing.assert_frame_equal(full(at), before)

@@ -19,7 +19,7 @@ for(const c of cases){
   for(const [key,col] of Object.entries(mapping)){
     const s=c.settings[key];
     const rows=c.source==='Synthetic vintage'?[55,56,57]:[52,53,59];
-    [s.pd/100,s.default_timing,s.payoff_timing].forEach((v,i)=>a.getRange(col+rows[i]).values=[[v]]);
+    [s.pd/100,c.source==='Synthetic vintage'?s.default_shift_months:s.default_timing,c.source==='Synthetic vintage'?s.payoff_shift_months:s.payoff_timing].forEach((v,i)=>a.getRange(col+rows[i]).values=[[v]]);
   }
   wb.recalculate();
   let maxError=0;

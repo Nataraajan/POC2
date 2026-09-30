@@ -57,3 +57,19 @@ median before 254.8 ms, after 132.0 ms (48.2% reduction). These are local server
 measurements, not Streamlit Cloud wake-up or browser/network timing. Both runs use
 the default forecast, 24 months, with the after version's optional charts and
 manual comparison off. No page splitting or raw loan-file loading was introduced.
+
+### Synthetic month shifts (September 30, 2026)
+
+Synthetic default and full-payoff timing now use integer month shifts, default 0,
+range -12 to +12. Negative shifts collect events no earlier than MOB 1; positive
+shifts retain events through MOB 36. PD and raw history are unchanged. Amortization
+is unchanged: events after full scheduled repayment have no dollar exposure.
+Manual curve-shape exponents remain separate. Existing sessions reset old synthetic
+multipliers to zero shifts and preserve PD.
+
+86 Python tests pass, including exact zero-shift identity, event-by-event shift
+checks, probability conservation, invalid-shift rejection and balance/reserve
+reconciliation. Independent workbook recalculation passes synthetic base/adjusted,
+manual base/adjusted, zero-PD and high-PD cases (including +12/-12 shifts). Across
+1,584 financial cells, maximum absolute difference from Python is below $0.000002;
+no spreadsheet formula errors were found.

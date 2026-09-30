@@ -2,7 +2,7 @@
 from copy import deepcopy
 import math
 
-from curve_model import build_curves
+from curve_model import build_curves, SYNTHETIC
 from dashboard_support import PRODUCT_DEFAULTS
 from product_forecast import segment_forecasts, combine
 from propel_reference import MONTHLY_GROWTH_PCT
@@ -33,6 +33,7 @@ DRIVER_LIMITS = {"monthly_applications_base": (0, 500000), "approval_rate_pct": 
                  "avg_loan_size": (100, 100000), "annual_yield_pct": (0, 200),
                  "monthly_growth_pct": (-20, 20), "opening_gross_clab": (0, 1e9)}
 CURVE_LIMITS = {"pd": (0, 99), "default_timing": (.25, 4), "payoff_timing": (.25, 4)}
+SHIFT_LIMITS = {"pd": (0, 99), "default_shift_months": (-12, 12), "payoff_shift_months": (-12, 12)}
 PORTFOLIO_LIMITS = {"creditfresh_share_pct": (0, 100), "line_of_credit_opening_share_pct": (0, 100),
                     "horizon_months": (6, 36)}
 
@@ -53,7 +54,7 @@ def compare_scenario(context, changes):
             raise ValueError("Duplicate change.")
         seen.add((target, field))
         limits = (PORTFOLIO_LIMITS if target == "portfolio" else DRIVER_LIMITS if target in trial["inputs"]
-                  else CURVE_LIMITS if target in trial["settings"] else {})
+                  else (SHIFT_LIMITS if trial["source"] == SYNTHETIC else CURVE_LIMITS) if target in trial["settings"] else {})
         if field not in limits or isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("Unsupported assumption.")
         lo, hi = limits[field]
@@ -76,6 +77,8 @@ def compare_scenario(context, changes):
         elif target in trial["inputs"]:
             trial["inputs"][target][field] = value
         else:
+            if field.endswith("_shift_months") and int(value) != value:
+                raise ValueError("Timing shifts must be whole months.")
             trial["settings"][target][field] = value
     before, after = evaluate(context), evaluate(trial)
     old, new = metrics(before), metrics(after)

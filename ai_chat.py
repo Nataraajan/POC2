@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 
 import pandas as pd
 import streamlit as st
-from scenario_tools import compare_scenario, evaluate, DRIVER_LIMITS, CURVE_LIMITS, PORTFOLIO_LIMITS
+from scenario_tools import compare_scenario, evaluate, DRIVER_LIMITS, CURVE_LIMITS, SHIFT_LIMITS, PORTFOLIO_LIMITS
 
 SYSTEM = """You are LendSight's financial-model assistant. Explain the supplied current
 model clearly and concisely. USD amounts are dollars, not millions unless labeled.
@@ -31,13 +31,14 @@ New lending earns next month. Principal repayment and full payoff both reduce CL
 Charge-offs use incremental defaults times scheduled remaining principal. LGD 100%,
 no recoveries. Opening reserve is carried; provision covers expected lifetime loss
 on new originations. Net revenue=revenue-provision; do not subtract charge-offs twice.
+Synthetic timing fields are default_shift_months and payoff_shift_months: integer -12 to 12, 0 unchanged, positive later, negative earlier. They shift event months, not repayment schedules. Manual timing fields remain curve-shape exponents, not months.
 Redraws are NOT explicitly modeled. Opening age mix and repayment curves can cause
 rapid initial runoff. Base/Upside/Downside change growth and conversion only, keeping
 all other live settings. Never present synthetic assumptions as calibrated Propel data.
 """
 
 TOOL = {"type": "function", "name": "compare_scenario", "strict": True,
-        "description": "Calculate a read-only what-if versus the current model. Values are absolute, percentages use 0–100 units. Targets are portfolio, a loan-type name, or a full brand+loan-type segment name. Supported fields/ranges: " + json.dumps({"loan_type": DRIVER_LIMITS, "segment": CURVE_LIMITS, "portfolio": PORTFOLIO_LIMITS}),
+        "description": "Calculate a read-only what-if versus the current model. Values are absolute, percentages use 0–100 units. Targets are portfolio, a loan-type name, or a full brand+loan-type segment name. Supported fields/ranges: " + json.dumps({"loan_type": DRIVER_LIMITS, "manual_segment": CURVE_LIMITS, "synthetic_segment": SHIFT_LIMITS, "portfolio": PORTFOLIO_LIMITS}),
         "parameters": {"type": "object", "additionalProperties": False, "required": ["changes"],
             "properties": {"changes": {"type": "array", "minItems": 1, "maxItems": 20,
                 "items": {"type": "object", "additionalProperties": False,

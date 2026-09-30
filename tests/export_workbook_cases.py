@@ -23,18 +23,19 @@ work=Path(sys.argv[1]).resolve(); work.mkdir(parents=True,exist_ok=True)
 (work/'forecast-check.xlsx').write_bytes(export_model(snapshot))
 cases=[]
 for name,source,pd_rate,dt,pt,mix,view in [
-    ('synthetic_base',SYNTHETIC,None,1.,1.,.8,'Combined'),
-    ('synthetic_adjusted',SYNTHETIC,35.,.5,2.,.8,'Combined'),
+    ('synthetic_base',SYNTHETIC,None,0,0,.8,'Combined'),
+    ('synthetic_adjusted',SYNTHETIC,35.,-1,2,.8,'Combined'),
     ('manual_base',MANUAL,None,2.2,2.5,.8,'Combined'),
     ('manual_adjusted',MANUAL,30.,.75,.5,.65,'Line of Credit'),
-    ('zero_pd',SYNTHETIC,0.,1.,1.,1.,'Combined'),
-    ('high_pd',SYNTHETIC,99.,4.,.25,0.,'Installment')]:
+    ('zero_pd',SYNTHETIC,0.,0,0,1.,'Combined'),
+    ('high_pd',SYNTHETIC,99.,12,-12,0.,'Installment')]:
     config=copy.deepcopy(settings[source]); key='CreditFresh Line of Credit'
     if pd_rate is not None: config[key]['pd']=pd_rate
-    config[key].update(default_timing=dt,payoff_timing=pt)
+    timing = dict(default_shift_months=dt,payoff_shift_months=pt) if source == SYNTHETIC else dict(default_timing=dt,payoff_timing=pt)
+    config[key].update(timing)
     # Extreme case affects the segment included in the chosen view.
     if name=='high_pd':
-        key='MoneyKey Installment'; config[key].update(pd=pd_rate,default_timing=dt,payoff_timing=pt)
+        key='MoneyKey Installment'; config[key].update(pd=pd_rate,**timing)
     risks=build_curves(source,config,raw)
     forecasts=segment_forecasts(inputs,mix,risks)
     kinds=list(inputs) if view=='Combined' else [view]

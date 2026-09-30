@@ -10,18 +10,28 @@ SOURCES = (SYNTHETIC, MANUAL)
 def default_settings(source, empirical=None):
     if source not in SOURCES:
         raise ValueError("Unknown curve source")
-    return {
-        key: dict(
-            pd=(empirical[key]["total_default_rate_pct"] if source == SYNTHETIC
-                else cfg["lifetime_default"] * 100),
-            default_timing=1.0 if source == SYNTHETIC else cfg["default_k"],
-            payoff_timing=1.0 if source == SYNTHETIC else cfg["payoff_k"],
-        ) for key, cfg in SEGMENTS.items()
-    }
+    result = {}
+    for key, cfg in SEGMENTS.items():
+        timing = (dict(default_shift_months=0, payoff_shift_months=0) if source == SYNTHETIC
+                  else dict(default_timing=cfg["default_k"], payoff_timing=cfg["payoff_k"]))
+        result[key] = dict(pd=empirical[key]["total_default_rate_pct"] if source == SYNTHETIC
+                          else cfg["lifetime_default"] * 100, **timing)
+    return result
+
+
+def shift_curve(shape, months):
+    """Translate event months; early events collect at MOB 1, never at origination."""
+    if isinstance(months, bool) or not np.isfinite(months) or int(months) != months or not -12 <= months <= 12:
+        raise ValueError("Timing shift must be a whole number from -12 to +12 months")
+    ages = np.arange(37)
+    shifted = np.interp(ages - int(months), ages, shape, left=0, right=1)
+    shifted[0] = 0
+    return shifted
+
 
 
 def build_curves(source, settings, empirical=None):
-    """Manual CDF=(age/term)^k; vintage CDF=observed CDF^k.
+    """Manual CDF=(age/term)^k; synthetic events shift by whole months.
 
     Both conditional event CDFs end at one. PD partitions the population into
     mutually exclusive default and full-payoff outcomes. Payoff is loan closure,
@@ -34,9 +44,10 @@ def build_curves(source, settings, empirical=None):
         s, term = settings[key], cfg["term_months"]
         if not np.isfinite(s["pd"]) or not 0 <= s["pd"] <= 99:
             raise ValueError("Lifetime default must be between 0 and 99 percent")
-        for field in ("default_timing", "payoff_timing"):
-            if not np.isfinite(s[field]) or not .25 <= s[field] <= 4:
-                raise ValueError("Timing must be between 0.25 and 4")
+        if source == MANUAL:
+            for field in ("default_timing", "payoff_timing"):
+                if not np.isfinite(s[field]) or not .25 <= s[field] <= 4:
+                    raise ValueError("Timing must be between 0.25 and 4")
         base = empirical[key] if source == SYNTHETIC else {}
         if source == SYNTHETIC and base["term_months"] != term:
             raise ValueError("Synthetic source term does not match segment")
@@ -49,6 +60,8 @@ def build_curves(source, settings, empirical=None):
                     or np.any(np.diff(shape) < 0) or np.any(shape < 0)
                     or np.any(shape > 1) or not np.allclose(shape[term:], 1)):
                 raise ValueError("Invalid conditional event curve")
-            curve[event + "_shape"] = np.power(shape, s[event + "_timing"]).tolist()
+            curve[event + "_shape"] = (shift_curve(shape, s[event + "_shift_months"]) if source == SYNTHETIC
+                                       else np.power(shape, s[event + "_timing"])).tolist()
+        curve["curve_window_months"] = term + (max(0, s["default_shift_months"], s["payoff_shift_months"]) if source == SYNTHETIC else 0)
         result[key] = curve
     return result

@@ -70,7 +70,7 @@ def input_cells(snapshot):
                 out[f"{payoff_col}{106+m}"]=pay
             for r,v in [(52,manual["pd"]/100),(53,manual["default_timing"]),
                         (54,historical["total_default_rate_pct"]/100),(55,synthetic["pd"]/100),
-                        (56,synthetic["default_timing"]),(57,synthetic["payoff_timing"]),
+                        (56,synthetic["default_shift_months"]),(57,synthetic["payoff_shift_months"]),
                         (59,manual["payoff_timing"])]:
                 out[f"{c}{r}"]=v
     for p, c in [("Line of Credit", "E"), ("Installment", "F")]:
@@ -283,10 +283,10 @@ def _editable_curves(root, idx, snapshot):
                   50: 'Editable segment curves · fixed 12/24-month terms',
                   52: 'Manual lifetime default', 53: 'Manual default timing',
                   54: 'Original synthetic default', 55: 'Synthetic default override',
-                  56: 'Synthetic default timing', 57: 'Synthetic payoff timing',
+                  56: 'Default shift (months)', 57: 'Full-payoff shift (months)',
                   58: 'Applied lifetime default', 59: 'Manual payoff timing',
-                  61: 'Timing: 0.25–4; smaller = earlier, larger = later.',
-                  62: 'Synthetic timing 1 preserves history; manual timing 1 is even.',
+                  61: 'Synthetic shift: -12 to +12 whole months; 0 = unchanged.',
+                  62: 'Positive = later; negative = earlier, floored at MOB 1. Manual shape 1 = even.',
                   63: 'Applied conditional event curves (calculated)',
                   64: 'Months on book',
                   103: 'Original synthetic conditional curves · source, not overrides',
@@ -319,7 +319,7 @@ def _editable_curves(root, idx, snapshot):
                 put('C'+str(raw), age)
                 for dest, manualrow, synthrow in [(c,53,56),(pay,59,57)]:
                     put(f'{dest}{row}',
-                        f'IF($E$6=2,POWER({dest}{raw},{c}${synthrow}),POWER(MIN({age}/{term},1),{c}${manualrow}))',
+                        f'IF($E$6=2,IF(AND({c}${synthrow}=INT({c}${synthrow}),ABS({c}${synthrow})<=12),IF({age}=0,0,INDEX({dest}$106:{dest}$142,MAX(0,MIN(36,{age}-{c}${synthrow}))+1)),NA()),POWER(MIN({age}/{term},1),{c}${manualrow}))',
                         True, calculated_style)
                     put(f'{dest}{raw}', 0, style=calculated_style)
                 put(f'{c}105', key+' default')
@@ -335,9 +335,10 @@ def _editable_curves(root, idx, snapshot):
             validations = ET.SubElement(root, f'{{{NS}}}dataValidations')
         for refs, lo, hi in [
             (' '.join(c+str(r) for c in ('E','F','J','K') for r in (52,55)), '0', '.99'),
-            (' '.join(c+str(r) for c in ('E','F','J','K') for r in (53,56,57,59)), '.25', '4')]:
+            (' '.join(c+str(r) for c in ('E','F','J','K') for r in (53,59)), '.25', '4'),
+            (' '.join(c+str(r) for c in ('E','F','J','K') for r in (56,57)), '-12', '12')]:
             v = ET.SubElement(validations, f'{{{NS}}}dataValidation',
-                              type='decimal', operator='between', sqref=refs,
+                              type='whole' if lo == '-12' else 'decimal', operator='between', sqref=refs,
                               showErrorMessage='1', errorStyle='stop', error='Enter a value within the allowed range.')
             ET.SubElement(v, f'{{{NS}}}formula1').text=lo
             ET.SubElement(v, f'{{{NS}}}formula2').text=hi

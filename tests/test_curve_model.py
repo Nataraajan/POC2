@@ -30,12 +30,16 @@ def test_curve_bounds_and_portfolio_conservation(mode,timing,pd_rate):
     empirical=load_payment_curves()
     settings=default_settings(mode,empirical)
     for s in settings.values():
-        s.update(pd=pd_rate,default_timing=timing,payoff_timing=4.25-timing)
+        s.update(pd=pd_rate)
+        if mode == SYNTHETIC:
+            s.update(default_shift_months={.25:-12,1.:0,4.:12}[timing], payoff_shift_months={.25:12,1.:0,4.:-12}[timing])
+        else:
+            s.update(default_timing=timing,payoff_timing=4.25-timing)
     risks=build_curves(mode,settings,empirical)
     for key,r in risks.items():
         for event in ('default','payoff'):
             shape=np.array(r[event+'_shape'])
-            assert shape[0]==0 and np.all(shape[r['term_months']:]==1)
+            assert shape[0]==0 and shape[-1]==1
             assert np.all(np.diff(shape)>=0)
         total=np.array(r['default_shape'])*pd_rate/100+np.array(r['payoff_shape'])*(1-pd_rate/100)
         assert np.max(total)<=1+1e-14
@@ -49,13 +53,13 @@ def test_curve_bounds_and_portfolio_conservation(mode,timing,pd_rate):
             assert f.principal_repaid.min()>=-1e-7
 
 
-@pytest.mark.parametrize('field',['pd','default_timing','payoff_timing'])
+@pytest.mark.parametrize('field',['pd','default_shift_months','payoff_shift_months'])
 def test_changes_are_segment_specific(field):
     raw=load_payment_curves()
     settings=default_settings(SYNTHETIC,raw)
     before=segment_forecasts(inputs(),.8,build_curves(SYNTHETIC,settings,raw))
     key='MoneyKey Installment'
-    settings[key][field]=45. if field=='pd' else .5
+    settings[key][field]=45. if field=='pd' else -1
     after=segment_forecasts(inputs(),.8,build_curves(SYNTHETIC,settings,raw))
     for name,cfg in SEGMENTS.items():
         old,new=before[cfg['brand']][cfg['loan_type']],after[cfg['brand']][cfg['loan_type']]
@@ -71,3 +75,26 @@ def test_invalid_controls_rejected(field,value):
     settings['CreditFresh Line of Credit'][field]=value
     with pytest.raises(ValueError):
         build_curves(MANUAL,settings)
+
+
+@pytest.mark.parametrize('months', [-12, -1, 0, 1, 12])
+def test_shift_translates_each_event_and_preserves_mass(months):
+    from curve_model import shift_curve
+    masses = np.zeros(37)
+    masses[[1, 6, 24]] = [.2, .3, .5]
+    original = np.cumsum(masses)
+    expected = np.zeros(37)
+    for age in (1, 6, 24):
+        expected[max(1, age + months)] += masses[age]
+    shifted = shift_curve(original, months)
+    np.testing.assert_allclose(shifted, np.cumsum(expected))
+    assert shifted[0] == 0 and shifted[-1] == 1
+    if months == 12:
+        assert shifted[35] == .5 and shifted[36] == 1
+
+
+@pytest.mark.parametrize('months', [-13, 13, .5, float('nan'), float('inf'), True])
+def test_invalid_shift_rejected(months):
+    from curve_model import shift_curve
+    with pytest.raises(ValueError):
+        shift_curve(np.clip(np.arange(37)/24,0,1), months)
