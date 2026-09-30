@@ -148,6 +148,7 @@ def forecast_clab_v2(
     monthly_growth_pct: float = 0.0,
     default_shape: list | None = None,
     payoff_shape: list | None = None,
+    applications_multiplier_by_month: list | None = None,
 ) -> pd.DataFrame:
     """
     seasonality_pattern: exactly 12 multipliers (month 1..12), cycles
@@ -206,6 +207,12 @@ def forecast_clab_v2(
         * seasonal_mults
         * (1 + monthly_growth_pct / 100) ** (months - 1)
     )
+    # Optional non-recurring scenario shock; existing growth and seasonality remain intact.
+    if applications_multiplier_by_month is not None:
+        multipliers = np.asarray(applications_multiplier_by_month, dtype=float)
+        if multipliers.shape != (horizon_months,) or not np.isfinite(multipliers).all() or (multipliers < 0).any():
+            raise ValueError("Application multipliers must be finite, nonnegative, and match the horizon")
+        applications = applications * multipliers
     originations = applications * (approval_rate_pct / 100.0) * avg_loan_size
 
     # --- Provisioning: lifetime expected loss, booked in full the month of origination ---

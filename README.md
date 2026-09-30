@@ -98,3 +98,12 @@ updates as inputs change. The monthly schedule is now solely on Forecasting;
 Model assumptions uses a compact table.
 
 Existing sessions migrate synthetic timing multipliers to zero month shifts while retaining PD. Old multipliers are not interpreted as month shifts. Excel and the AI preview use the same shifted curves.
+
+AI previews support temporary application changes in inclusive forecast-month windows,
+without repeating the uplift in later years or changing the underlying growth rate.
+For example, +2% in months 1–7 multiplies those months by 1.02; subsequent application
+volumes return to baseline. Additional loan cohorts continue to run off normally.
+Responses include separate annual and monthly baseline/preview results, with partial
+years labeled. Ambiguous timing prompts a clarification. The chat's assumptions and
+annual results use business labels instead of raw JSON. These are read-only previews;
+dashboard inputs and exported Excel formulas remain unchanged.

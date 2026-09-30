@@ -120,3 +120,74 @@ def test_widget_visible_and_missing_key_graceful(monkeypatch):
     before = full(at).copy()
     at.button(key='ai_toggle').click().run()
     pd.testing.assert_frame_equal(full(at), before)
+
+
+def application_window(target='Line of Credit', start=1, end=7, value=2):
+    return dict(target=target, field='applications_change_pct', value=value,
+                start_month=start, end_month=end)
+
+
+def test_temporary_uplift_does_not_repeat_and_year_two_isolated(context):
+    saved = deepcopy(context)
+    result = compare_scenario(context, [application_window(t) for t in context['selected']])
+    a, b = pd.DataFrame(result['monthly_baseline']), pd.DataFrame(result['monthly_preview'])
+    for field in ('applications', 'originations', 'new_provisions'):
+        assert b[field].iloc[:7].to_numpy() == pytest.approx(a[field].iloc[:7].to_numpy()*1.02)
+        assert b[field].iloc[7:].to_numpy() == pytest.approx(a[field].iloc[7:].to_numpy())
+    assert b.revenue.iloc[0] == pytest.approx(a.revenue.iloc[0])  # new lending earns next month
+    y2 = result['annual_comparison'][1]
+    assert y2['complete_year']
+    assert y2['baseline']['Revenue'] == pytest.approx(a.revenue.iloc[12:24].sum())
+    assert y2['change']['Revenue'] == pytest.approx((b.revenue-a.revenue).iloc[12:24].sum())
+    assert 0 < y2['change']['Revenue'] < result['change']['Revenue']
+    assert sum(p['change']['Revenue'] for p in result['annual_comparison']) == pytest.approx(result['change']['Revenue'])
+    assert context == saved
+
+
+@pytest.mark.parametrize('start,end', [(7,7), (7,24), (1,7)])
+def test_window_boundaries(context, start, end):
+    result = compare_scenario(context, [application_window(start=start, end=end)])
+    a, b = pd.DataFrame(result['monthly_baseline']), pd.DataFrame(result['monthly_preview'])
+    changed = (b.applications-a.applications).abs() > .001
+    assert changed.tolist() == [start <= m <= end for m in a.month]
+
+
+@pytest.mark.parametrize('changes', [
+    [application_window(start=0)], [application_window(start=8, end=7)],
+    [application_window(start=True)], [application_window(end=7.5)],
+    [application_window(end=25)], [application_window(value=-101)],
+    [application_window(value=float('nan'))], [application_window(value=True)],
+    [application_window(), application_window(start=7,end=9)],
+    [application_window(), dict(target='Line of Credit', field='monthly_applications_base', value=90000)],
+    [dict(target='Line of Credit', field='annual_yield_pct', value=90, start_month=1, end_month=7)],
+])
+def test_invalid_timed_scenarios(context, changes):
+    with pytest.raises(ValueError): compare_scenario(context, changes)
+
+
+def test_disjoint_windows_and_partial_year(context):
+    c = deepcopy(context)
+    for inputs in c['inputs'].values(): inputs['horizon_months'] = 18
+    result = compare_scenario(c, [application_window(end=2), application_window(start=5,end=7)])
+    assert not result['annual_comparison'][1]['complete_year']
+    assert result['annual_comparison'][1]['preview_months'] == 6
+    extended = compare_scenario(c, [application_window(), dict(target='portfolio', field='horizon_months', value=24)])
+    assert extended['baseline_months'] == extended['preview_months'] == 24
+    assert extended['annual_comparison'][1]['complete_year']
+
+
+def test_timed_tool_roundtrip_and_readable_details(context):
+    calls = []
+    def fake(payload, key):
+        calls.append(payload)
+        if len(calls) == 1:
+            assert 'Resolve ambiguous timing BEFORE' in payload['instructions']
+            return {'output': [{'type': 'function_call', 'call_id': 'window', 'name': 'compare_scenario',
+                'arguments': json.dumps({'changes': [application_window(t) for t in context['selected']]})}]}
+        result = json.loads(payload['input'][-1]['output'])
+        assert result['annual_comparison'][1]['baseline']['Revenue'] > 0
+        return {'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Year 2 calculated.'}]}]}
+    text, previews = ai_chat.answer('Applications +2% only in months 1-7. Year 2 revenue?', [], context, 'fake', 'model', fake)
+    assert text == 'Year 2 calculated.'
+    assert 'months 1–7 only' in ai_chat.describe_change(previews[0]['changes'][0])
+    assert 'monthly_applications_base' not in ai_chat.describe_change(dict(target='Installment', field='monthly_applications_base', value=40000))

@@ -73,3 +73,15 @@ reconciliation. Independent workbook recalculation passes synthetic base/adjuste
 manual base/adjusted, zero-PD and high-PD cases (including +12/-12 shifts). Across
 1,584 financial cells, maximum absolute difference from Python is below $0.000002;
 no spreadsheet formula errors were found.
+
+### AI month-window previews (September 30, 2026)
+
+103 tests pass. New checks cover temporary application changes, exact start/end
+boundaries, no unintended Year 2 repetition, annual totals reconciling to monthly
+outputs, partial-year labels, equal baseline/preview horizons, immutable dashboard
+inputs, invalid and overlapping windows, and the API tool round trip. A Streamlit
+render check confirms readable assumption text and annual comparison tables.
+At the Base preset, +2% applications for both loan types in months 1–7 only raises
+Year 2 revenue from $380,237,482.44 to $380,959,483.16 (+$722,000.72, +0.18988%).
+The optional monthly multiplier is applied before the existing origination
+calculation; default forecasts, credit curves and Excel formulas are unchanged.
