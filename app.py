@@ -24,6 +24,7 @@ from dashboard_support import (
 
 st.set_page_config(
     page_title="LendSight | CLAB Forecast",
+    page_icon="https://cdn.propelholdings.com/web/assets/logos/icon-blue.svg",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -293,7 +294,7 @@ if st.session_state.get("navigation") in ("Vintage analysis", "Vintage overlay")
     st.session_state["navigation"] = "Vintage Analysis & Overlay"
 with st.sidebar:
     st.markdown(
-        '<div class="brand"><span>✦</span> LendSight</div>', unsafe_allow_html=True
+        '<div class="brand"><img src="https://cdn.propelholdings.com/web/assets/logos/icon-blue.svg" alt="Propel" style="width:30px;height:30px;padding:4px;background:white;border-radius:7px;vertical-align:middle;margin-right:7px">LendSight</div>', unsafe_allow_html=True
     )
     section = st.radio(
         "Navigation",
@@ -707,3 +708,4 @@ from ai_chat import render_chat
 if section == "Vintage Analysis & Overlay":
     st.session_state["ai_context"] = current_ai_context({k: args(k, historical) for k in PRODUCT_DEFAULTS})
 render_chat()
+
