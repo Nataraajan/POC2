@@ -1,8 +1,8 @@
 # Validation - 30 September 2026
 
-The full suite contains 59 tests. Run `python -m pytest tests -q`.
+The full suite contains 60 tests. Run `python -m pytest tests -q`.
 
-Full run after integrating curve controls and the formatted Excel template: **59 passed in 85.35 seconds**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
+Full run after making Excel generation on demand: **60 passed in 27.61 seconds**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
 
 ## Verified behavior
 
@@ -36,3 +36,5 @@ Across all six cases, 11 financial rows × 24 months = **1,584 recalculated valu
 Changed assumption controls, calculated curve arrays and the affected forecast schedule were rendered and visually inspected. Clipped segment headers and obsolete midpoint commentary were corrected. The consolidated page and forecast/export controls were reviewed in a local browser as well as AppTest.
 
 Desktop Excel and LibreOffice were not available for native recalculation verification. The evidence above verifies the exported formulas in Artifact Tool; it does not claim testing in those native applications. Financial assumptions remain illustrative.
+
+The export lifecycle test confirms no workbook generation on initial load or input changes, reuse after preparation, and invalidation/rebuild after assumptions change. Workbook calculations are unchanged.

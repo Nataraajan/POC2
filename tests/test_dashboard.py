@@ -278,3 +278,35 @@ def test_payoffs_change_revenue_and_reconcile():
     without=combine(v['Short-Term'] for v in segment_forecasts({'Short-Term':args},.8,no_pay).values())
     assert with_pay.revenue.sum() < without.revenue.sum()
     np.testing.assert_allclose(with_pay.ending_gross_clab,with_pay.beginning_gross_clab+with_pay.originations-with_pay.principal_repaid-with_pay.charge_offs,atol=.00001)
+
+
+def test_excel_is_prepared_on_request_and_invalidated_after_changes(monkeypatch):
+    import excel_export
+    calls = []
+
+    def export(snapshot):
+        calls.append(snapshot)
+        return b"workbook-" + str(len(calls)).encode()
+
+    monkeypatch.setattr(excel_export, "export_model", export)
+    at = app()
+    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    assert not at.exception
+    assert calls == []
+    at.button(key="prepare_excel").click().run()
+    assert not at.exception
+    assert len(calls) == 1
+    assert at.session_state["prepared_excel"]["data"] == b"workbook-1"
+    assert any(x.label == "Download Excel model" for x in at.get("download_button"))
+    at.run()
+    assert len(calls) == 1
+    at.number_input(key="driver_Short-Term_apps").set_value(45000).run()
+    assert not at.exception
+    assert len(calls) == 1
+    assert "prepared_excel" not in at.session_state
+    assert not any(x.label == "Download Excel model" for x in at.get("download_button"))
+    at.button(key="prepare_excel").click().run()
+    assert not at.exception
+    assert len(calls) == 2
+    assert calls[0]["products"] != calls[1]["products"]
+    assert at.session_state["prepared_excel"]["data"] == b"workbook-2"

@@ -517,13 +517,26 @@ if section in ("Forecasting", "Monthly schedule"):
                 for product in PRODUCT_DEFAULTS
             },
         }
-        download.download_button(
-            "Excel model",
-            export_model(snapshot),
-            "CLAB-revenue-model.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-        )
+        # Include every exported assumption, including inactive-source controls.
+        snapshot_key = json.dumps(snapshot, sort_keys=True)
+        prepared = st.session_state.get("prepared_excel")
+        if prepared is not None and prepared["snapshot_key"] != snapshot_key:
+            del st.session_state["prepared_excel"]
+            prepared = None
+        if prepared is None:
+            if download.button("Prepare Excel model", key="prepare_excel", width="stretch"):
+                with st.spinner("Preparing Excel model..."):
+                    prepared = {"snapshot_key": snapshot_key, "data": export_model(snapshot)}
+                    st.session_state["prepared_excel"] = prepared
+        if prepared is not None:
+            download.download_button(
+                "Download Excel model",
+                prepared["data"],
+                "CLAB-revenue-model.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                on_click="ignore",
+                width="stretch",
+            )
         st.caption(
             "Excel includes editable blue inputs, linked formulas, full cohort calculations and balance checks. 36-month build; horizon totals match the selected forecast. Excel recalculates when opened."
         )
