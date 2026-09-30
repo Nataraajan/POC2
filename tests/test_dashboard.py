@@ -125,16 +125,17 @@ def test_product_persistence_and_combined_totals():
     assert at.number_input(key="driver_Short-Term_apps").value == 60000
 
 
-def test_historical_switch_and_restore():
+def test_source_switch_and_restore():
     at = app()
-    at.number_input(key="driver_risk_CreditFresh Short-Term_pd").set_value(30.0).run()
+    at.selectbox(key="driver_source").set_value("Manual assumptions").run()
+    key="driver_curve_Manual assumptions_CreditFresh Short-Term_pd"
+    at.number_input(key=key).set_value(30.0).run()
     manual = full(at).copy()
-    next(b for b in at.button if b.label == "Apply historical curve").click().run()
-    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
     assert not np.allclose(full(at).Revenue, manual.Revenue)
     at.selectbox(key="driver_source").set_value("Manual assumptions").run()
     pd.testing.assert_frame_equal(full(at), manual)
-    assert at.number_input(key="driver_risk_CreditFresh Short-Term_pd").value == 30.0
+    assert at.number_input(key=key).value == 30.0
 
 
 def test_growth_scenarios_reset_and_partial_quarter():
@@ -170,20 +171,22 @@ def test_invalid_opening_age():
 def test_vintage_app_smoke():
     at = AppTest.from_file(str(ROOT / "vintage_app.py"), default_timeout=30).run()
     assert not at.exception
+    assert not at.dataframe
+    assert any("now part of LendSight" in title.value for title in at.title)
 
 
 def test_navigation_preserves_forecast():
     at = app()
     at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
-    at.selectbox(key="driver_source").set_value("Historical vintage").run()
+    at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
     expected = full(at).copy()
-    for page in ["Monthly schedule", "Vintage analysis", "Model assumptions"]:
+    for page in ["Monthly schedule", "Vintage Analysis & Overlay", "Model assumptions"]:
         at.radio(key="navigation").set_value(page).run()
         assert not at.exception
         assert at.radio(key="navigation").value == page
     at.radio(key="navigation").set_value("Forecasting").run()
     assert at.number_input(key="driver_Short-Term_apps").value == 60000
-    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    assert at.selectbox(key="driver_source").value == "Synthetic vintage"
     pd.testing.assert_frame_equal(full(at), expected)
 
 
@@ -216,33 +219,38 @@ def test_opening_millions_converts_to_engine_dollars():
     assert full(at)["Opening gross CLAB"].iloc[0] == 683_400_000
 
 
-def test_embedded_vintage_walkthrough_and_handoff():
-    at = app()
-    at.radio(key="navigation").set_value("Vintage analysis").run()
-    assert not at.exception
-    assert len(at.code) == 2  # displayed SQL queries
-    assert len(at.dataframe) >= 4  # validation, sample rows, curve, triangle
-    next(b for b in at.button if b.label == "Run live demo").click().run(timeout=60)
-    assert not at.exception
-    expected = at.session_state["live_demo_run"]["overlay"].copy()
-    next(b for b in at.button if b.label == "Preview this live curve in forecast overlay").click().run()
-    assert not at.exception
-    assert at.radio(key="navigation").value == "Vintage overlay"
-    pd.testing.assert_frame_equal(at.session_state["overlay_experiment_result"]["overlay"], expected)
-
-
-def test_vintage_experiment_applies_to_forecast():
+def test_single_vintage_workflow_and_adjustments():
     at = app()
     before = full(at).copy()
-    at.radio(key="navigation").set_value("Vintage overlay").run()
-    next(n for n in at.number_input if n.label == "CreditFresh Short-Term lifetime default (%)").set_value(35.0)
-    next(b for b in at.button if b.label == "Generate vintage curves").click().run(timeout=60)
+    at.radio(key="navigation").set_value("Vintage Analysis & Overlay").run()
     assert not at.exception
-    next(b for b in at.button if b.label == "Apply overlay to forecast").click().run()
-    assert not at.exception
+    assert len(at.code) == 2
+    assert len(at.dataframe) >= 4
+    triangle = at.dataframe[-1].value.copy()
+    assert "Vintage overlay" not in at.radio(key="navigation").options
+    key="driver_curve_Synthetic vintage_CreditFresh Short-Term_default_timing"
+    at.number_input(key=key).set_value(.5).run()
+    pd.testing.assert_frame_equal(at.dataframe[-1].value, triangle)
     at.radio(key="navigation").set_value("Forecasting").run()
-    assert at.selectbox(key="driver_source").value == "Historical vintage"
+    assert at.number_input(key=key).value == .5
     assert not np.allclose(before["Provision expense"], full(at)["Provision expense"])
+    next(b for b in at.button if b.label == "Reset this source's curves").click().run()
+    pd.testing.assert_frame_equal(full(at), before)
+
+
+def test_manual_timing_is_live_and_reset_is_source_specific():
+    at = app()
+    vintage_key="driver_curve_Synthetic vintage_CreditFresh Short-Term_pd"
+    at.number_input(key=vintage_key).set_value(40.0).run()
+    at.selectbox(key="driver_source").set_value("Manual assumptions").run()
+    before=full(at).copy()
+    key="driver_curve_Manual assumptions_CreditFresh Short-Term_payoff_timing"
+    at.number_input(key=key).set_value(.5).run()
+    assert not np.allclose(before.Revenue,full(at).Revenue)
+    next(b for b in at.button if b.label == "Reset this source's curves").click().run()
+    pd.testing.assert_frame_equal(full(at),before)
+    at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
+    assert at.number_input(key=vintage_key).value == 40.0
 
 
 def test_editable_brand_mix():

@@ -1,5 +1,5 @@
-from segments import SEGMENTS
 """LendSight: driver-based CLAB forecast with an explicit opening portfolio."""
+from segments import SEGMENTS
 
 import json
 from html import escape
@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from excel_export import export_model
 from product_forecast import default_product_curves, segment_forecasts, combine
-from vintage_overlay import render_overlay
+from curve_model import SYNTHETIC, MANUAL
+from curve_controls import render_controls, render_curve_comparison
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
     cumulative_default_pct,
@@ -97,7 +98,7 @@ def custom():
 
 
 def apply_historical():
-    st.session_state["driver_source"] = "Historical vintage"
+    st.session_state["driver_source"] = SYNTHETIC
 
 
 def initialize():
@@ -208,28 +209,32 @@ def table(frame):
 initialize()
 # Segment payment curves are the sole historical input for the forecast.
 
+if "navigation" not in st.session_state and st.query_params.get("page") == "vintage":
+    st.session_state["navigation"] = "Vintage Analysis & Overlay"
+if st.session_state.get("navigation") in ("Vintage analysis", "Vintage overlay"):
+    st.session_state["navigation"] = "Vintage Analysis & Overlay"
 with st.sidebar:
     st.markdown(
         '<div class="brand"><span>✦</span> LendSight</div>', unsafe_allow_html=True
     )
     section = st.radio(
         "Navigation",
-        ["Forecasting", "Monthly schedule", "Vintage overlay", "Vintage analysis", "Model assumptions"],
+        ["Forecasting", "Monthly schedule", "Vintage Analysis & Overlay", "Model assumptions"],
         key="navigation",
         label_visibility="collapsed",
     )
     st.caption(
         "Synthetic history. User-supplied opening CLAB; assumed product split and age mix."
     )
-st.session_state.setdefault("driver_source", "Manual assumptions")
+st.session_state.setdefault("driver_source", SYNTHETIC)
 mode = st.session_state["driver_source"]
-historical = mode == "Historical vintage"
+historical = mode == SYNTHETIC
 
 st.markdown(
-    '<h1 id="forecasting">Driver-Based Revenue Model</h1>',
+    '<h1 id="forecasting">' + ("Vintage Analysis & Overlay" if section == "Vintage Analysis & Overlay" else "Driver-Based Revenue Model") + '</h1>',
     unsafe_allow_html=True,
 )
-st.caption("Applications → Originations → CLAB → Charge-offs → Revenue")
+st.caption("Synthetic history → original curves → editable assumptions → forecast" if section == "Vintage Analysis & Overlay" else "Applications → Originations → CLAB → Charge-offs → Revenue")
 toolbar = st.columns([1.2, 0.8, 0.65, 0.65, 0.8, 0.65, 1.5, 0.65])
 view = toolbar[0].selectbox(
     "Loan-type view", ["Combined"] + list(PRODUCT_DEFAULTS), key="portfolio"
@@ -254,25 +259,11 @@ mix_left, mix_right = st.columns([1, 3])
 cf_mix = mix_left.number_input("CreditFresh share (%)", 0.0, 100.0, step=1.0, key="driver_creditfresh_mix", on_change=custom) / 100
 mix_right.caption(f"MoneyKey share: {1-cf_mix:.0%}. Editable product allocation applies to opening CLAB and originations within each loan type. This hypothetical POC assigns both loan types to each brand; it does not represent their actual product catalogue. Volume is allocated before applying each segment’s own risk curve; pricing and approval remain loan-type assumptions.")
 product_fits = default_product_curves()
-if st.session_state.get("applied_overlay", {}).get("product_fits"):
-    product_fits = st.session_state["applied_overlay"]["product_fits"]
-with st.expander("Product credit assumptions", expanded=True):
-    st.session_state.pop("driver_product_stress", None)
-    risk_cols=st.columns(2)
-    product_risks={}
-    manual_product_risks={}
-    for i, (brand, cfg) in enumerate(SEGMENTS.items()):
-        risk_col = risk_cols[i % 2]
-        default_pd = cfg["lifetime_default"] * 100
-        key="driver_risk_"+brand
-        st.session_state.setdefault(key+"_pd", default_pd)
-        st.session_state.setdefault(key+"_mid", product_fits[brand]["midpoint_months"])
-        risk_col.number_input(brand+" lifetime default (%)",0.0,99.0,key=key+"_pd",disabled=historical,on_change=custom)
-        risk_col.caption("Default and payoff timing come from the 36-vintage payment analysis.")
-        manual_product_risks[brand]={**product_fits[brand],"total_default_rate_pct":st.session_state[key+"_pd"],"midpoint_months":st.session_state[key+"_mid"]}
-        product_risks[brand]=product_fits[brand] if historical else manual_product_risks[brand]
-        risk_col.caption(f"Applied {brand}: PD {product_risks[brand]['total_default_rate_pct']:.2f}%; timing from observed default/payoff curves.")
-    st.caption("Each brand/loan-type segment has its own empirical default and payoff curves at the matching 12/24-month term. Rates, timing and product definitions are illustrative, not calibrated Propel credit assumptions. LGD 100%, no recoveries.")
+mode, curve_settings, curves_by_source = render_controls(
+    product_fits, expanded=section == "Vintage Analysis & Overlay")
+historical = mode == SYNTHETIC
+product_risks = curves_by_source[mode]
+manual_product_risks = curves_by_source[MANUAL]
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 if section == "Forecasting":
     with st.container(border=True, key="driver_panel"):
@@ -319,14 +310,8 @@ if section == "Forecasting":
             st.caption("Existing loans earn in month 1. New loans earn from month 2.")
         with cols[3]:
             st.markdown("**◒ Credit Curve**")
-            mode = st.selectbox(
-                "Default curve source",
-                ["Manual assumptions", "Historical vintage"],
-                key="driver_source",
-            )
-            historical = mode == "Historical vintage"
-            st.caption("Product default rates and timing are controlled above.")
-            st.caption("Default probability and timing are set by product in Product credit assumptions above.")
+            st.write(mode)
+            st.caption("Edit default rates and timing in Curve assumptions and adjustments above. Review original and adjusted curves in Vintage Analysis & Overlay.")
         with cols[4]:
             st.markdown("**▧ Opening Portfolio**")
             st.session_state[p + "opening_m"] = st.session_state[p + "opening"] / 1_000_000
@@ -370,11 +355,9 @@ manual_provision = sum(manual_segments[b][k].new_provisions.sum() for b in manua
 st.success(
     f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
 )
-if historical and st.session_state.get("applied_overlay"):
-    st.info("Applied vintage experiment: " + " · ".join(f"{p} ← {v}" for p,v in st.session_state["applied_overlay"]["mapping"].items()))
 if historical:
     st.caption(
-        f"Historical vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
+        f"Synthetic vintage with adjustments vs current manual assumptions, same operating drivers: horizon revenue change {_fmt_dollar_scaled(df.revenue.sum()-manual_revenue)}; provision change {_fmt_dollar_scaled(df.new_provisions.sum()-manual_provision)}. Opening reserve is recalculated in both scenarios.".replace(
             "$", r"\$"
         )
     )
@@ -460,31 +443,9 @@ if section == "Forecasting":
             )
         )
     with right, st.container(border=True, key="curve_panel"):
-        st.subheader("Default Curve Overlay")
-        fig = go.Figure()
-        for brand, color in zip(SEGMENTS, ["#172468", "#5968ad", "#348ad2", "#28a89b"]):
-            ages=np.arange(max(horizon,24)+1)
-            for applied, curve in [(True,product_risks[brand]),(False,manual_product_risks[brand] if historical else product_fits[brand])]:
-                fig.add_scatter(x=ages,y=np.interp(ages,np.arange(len(curve["default_shape"])),curve["default_shape"])*curve["total_default_rate_pct"],name=brand+(" — APPLIED" if applied else " — comparison"),line=dict(color=color,width=3 if applied else 1,dash="solid" if applied else "dot"),hovertemplate=brand+"<br>MOB %{x}<br>Default %{y:.2f}%<extra></extra>")
-        for brand, curve in product_risks.items():
-            fig.add_scatter(x=ages,y=np.interp(ages,np.arange(len(curve['payoff_shape'])),curve['payoff_shape'])*(100-curve['total_default_rate_pct']),name=brand+' â€” cumulative payoff',line=dict(dash='dash'))
-        chart(fig, "Cumulative default %")
-        fig.update_xaxes(title="Months on book (MOB)", dtick=3)
-        fig.update_layout(height=380, hovermode="closest", hoverlabel=dict(namelength=-1, bgcolor="white", font_size=12), margin=dict(l=15,r=15,t=15,b=120), legend=dict(orientation="h", y=-.3, yanchor="top", x=0))
-        fig.update_yaxes(ticksuffix="%")
-        st.plotly_chart(fig, width="stretch")
-        st.caption("Charge-offs = incremental defaults × principal still owed, summed across cohorts. The model assumes full loss of that balance (no recoveries). PLL is lifetime expected loss on new originations, booked upfront; subsequent charge-offs use the reserve and are not a second expense.")
-        st.caption(
-            f"Applied: {mode} · four matching brand/loan-type curves · synthetic product history."
-        )
-        for brand, risk in product_risks.items():
-            st.caption(f"{brand}: applied lifetime PD {risk['total_default_rate_pct']:.2f}%; empirical default/payoff timing.")
-        st.button(
-            "Apply historical curve",
-            on_click=apply_historical,
-            disabled=historical,
-            width="stretch",
-        )
+        st.subheader("Applied curves vs synthetic history")
+        render_curve_comparison(product_risks, product_fits)
+        st.caption("Charge-offs use incremental defaults × principal still owed. PLL is the expected lifetime principal loss on new originations, booked upfront. Terms remain 12/24 months.")
 
 if section in ("Forecasting", "Monthly schedule"):
     with st.container(border=True, key="schedule_panel"):
@@ -541,6 +502,7 @@ if section in ("Forecasting", "Monthly schedule"):
             "manual_segment_risks": manual_product_risks,
             "historical_segment_risks": product_fits,
             "source": mode,
+            "curve_settings": curve_settings,
             "scenario": st.session_state.get("scenario", "Base"),
             "view": view,
             "products": {
@@ -580,32 +542,19 @@ if section in ("Forecasting", "Monthly schedule"):
             st.download_button(
                 "Download assumptions",
                 json.dumps(
-                    {
-                        "source": mode,
-                        "scenario": st.session_state.get("scenario", "Base"),
-                        "products": all_inputs,
-                    },
+                    snapshot,
                     indent=2,
                 ),
                 "assumptions.json",
                 "application/json",
             )
 
-if section == "Vintage analysis":
-    from vintage_app import render_vintage_analysis
+if section == "Vintage Analysis & Overlay":
+    st.subheader("Applied curves vs synthetic history")
+    render_curve_comparison(product_risks, product_fits)
+    st.caption("The forecast uses the source and adjustments selected above. Historical triangles below always show the original 2,000,000-loan synthetic dataset; edits do not rewrite history.")
+    from vintage_analysis import render_vintage_analysis
     render_vintage_analysis()
-    if st.session_state.get("live_demo_run"):
-        def preview_live_overlay():
-            live = st.session_state["live_demo_run"]
-            st.session_state["overlay_experiment_result"] = {
-                "triangle": live["triangle"], "overlay": live["overlay"],
-                "fits": live["payment_curves"], "rates": live["rates_pct"],
-            }
-            st.session_state["navigation"] = "Vintage overlay"
-        st.button("Preview this live curve in forecast overlay", on_click=preview_live_overlay, type="primary")
-    st.caption("Precomputed results remain separate from forecast assumptions. Use a live run and preview its product mapping before applying it to the forecast.")
-if section == "Vintage overlay":
-    render_overlay(all_inputs, cf_mix, product_risks)
 
 if section == "Model assumptions":
     st.markdown(
@@ -621,7 +570,7 @@ if section == "Model assumptions":
             "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
         )
         st.write(
-            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. Early payoffs use the observed payoff curve; recoveries are not modeled."
+            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. Early payoffs use the selected and adjusted payoff curve; recoveries are not modeled."
         )
         st.write(
             "Scenario buttons change growth and approval only. Base: 0% growth / default approval. Upside: +2% monthly growth / +3 percentage points approval. Downside: −2% growth / −3 percentage points approval. Product default rates and timing are retained."

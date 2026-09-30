@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from clab_forecast_engine_v2 import forecast_clab_v2
 from segments import segment_key
+from curve_model import SYNTHETIC, MANUAL, default_settings, build_curves
 import re
 from copy import deepcopy
 
@@ -50,7 +51,7 @@ def input_cells(snapshot):
     inputs = snapshot["products"]
     out = {
         "E29": snapshot.get("creditfresh_share", 0.8),
-        "E6": 2 if snapshot["source"] == "Historical vintage" else 1,
+        "E6": 2 if snapshot["source"] == SYNTHETIC else 1,
         "E7": next(iter(inputs.values()))["active"]["horizon_months"],
         "E8": snapshot["scenario"],
         "E9": {"Combined": 1, "Short-Term": 2, "Installment": 3}[snapshot["view"]],
@@ -61,13 +62,16 @@ def input_cells(snapshot):
             out[f"{c}64"] = brand + " default"
             out[f"{payoff_col}64"] = brand + " payoff"
             active=snapshot["segment_risks"][brand]
-            manual=snapshot.get("manual_segment_risks",snapshot["segment_risks"])[brand]
             historical=snapshot.get("historical_segment_risks",snapshot["segment_risks"])[brand]
-            if active.get("default_shape") is not None:
-                for m,(d,pay) in enumerate(zip(active["default_shape"],active["payoff_shape"])):
-                    out[f"{c}{65+m}"]=d
-                    out[f"{payoff_col}{65+m}"]=pay
-            for r,v in [(52,manual["total_default_rate_pct"]/100),(53,manual["midpoint_months"]),(54,historical["total_default_rate_pct"]/100),(55,historical["midpoint_months"])]:
+            manual=snapshot["curve_settings"][MANUAL][brand]
+            synthetic=snapshot["curve_settings"][SYNTHETIC][brand]
+            for m,(d,pay) in enumerate(zip(historical["default_shape"],historical["payoff_shape"])):
+                out[f"{c}{106+m}"]=d
+                out[f"{payoff_col}{106+m}"]=pay
+            for r,v in [(52,manual["pd"]/100),(53,manual["default_timing"]),
+                        (54,historical["total_default_rate_pct"]/100),(55,synthetic["pd"]/100),
+                        (56,synthetic["default_timing"]),(57,synthetic["payoff_timing"]),
+                        (59,manual["payoff_timing"])]:
                 out[f"{c}{r}"]=v
     for p, c in [("Short-Term", "E"), ("Installment", "F")]:
         item = inputs[p]
@@ -254,9 +258,127 @@ def _segment_template(root, idx):
                 formula.text = formula.text.replace(f':${old}$101',f':${new}$101')
 
 
+def _editable_curves(root, idx, snapshot):
+    """Upgrade the existing template in the app's dependency-free XML adapter."""
+    cells = {c.get('r'): c for c in root.iter(f'{{{NS}}}c')}
+    data = root.find(f'{{{NS}}}sheetData')
+    rows = {int(r.get('r')): r for r in data}
+
+    def put(address, value, formula=False, style=None):
+        row = int(re.search(r'\d+', address)[0])
+        if row not in rows:
+            rows[row] = ET.SubElement(data, f'{{{NS}}}row', r=str(row))
+        if address not in cells:
+            cells[address] = ET.SubElement(rows[row], f'{{{NS}}}c', r=address)
+        cell = cells[address]
+        if style is not None:
+            cell.set('s', style)
+        _set_value(cell, value if not formula else 0)
+        if formula:
+            cell.remove(cell.find(f'{{{NS}}}v'))
+            ET.SubElement(cell, f'{{{NS}}}f').text = value
+
+    if idx == 2:
+        labels = {6: 'Curve source (1 manual, 2 synthetic)', 27: '',
+                  50: 'Editable segment curves · fixed 12/24-month terms',
+                  52: 'Manual lifetime default', 53: 'Manual default timing',
+                  54: 'Original synthetic default', 55: 'Synthetic default override',
+                  56: 'Synthetic default timing', 57: 'Synthetic payoff timing',
+                  58: 'Applied lifetime default', 59: 'Manual payoff timing',
+                  61: 'Timing: 0.25–4; smaller = earlier, larger = later.',
+                  62: 'Synthetic timing 1 preserves history; manual timing 1 is even.',
+                  63: 'Applied conditional event curves (calculated)',
+                  64: 'Months on book',
+                  103: 'Original synthetic conditional curves · source, not overrides',
+                  104: 'Source: 2,000,000 synthetic loans; observation June 2026.',
+                  105: 'Months on book',
+                  144: 'Payoff = full closure alongside scheduled amortization. LGD 100%; no recoveries.',
+                  145: 'Hypothetical POC segments and credit assumptions; not calibrated to Propel.'}
+        for row, label in labels.items():
+            put(f'C{row}', label)
+        for c in ('E','F'):
+            put(c+'27', '')
+        pct_style = cells['E52'].get('s')
+        num_style = cells['E53'].get('s')
+        calculated_style = cells['E58'].get('s')
+        for key, c, pay, termcol in [('CreditFresh Short-Term','E','H','E'),
+                                    ('MoneyKey Short-Term','F','I','E'),
+                                    ('CreditFresh Installment','J','M','F'),
+                                    ('MoneyKey Installment','K','N','F')]:
+            term = snapshot['segment_risks'][key]['term_months']
+            for row in (52,54,55):
+                cells[c+str(row)].set('s',pct_style)
+            cells[c+'54'].set('s',calculated_style)
+            for row in (53,56,57,59):
+                cells[c+str(row)].set('s',num_style)
+            put(c+'58', f'IF(AND({termcol}16={term},OR($E$6=1,$E$6=2)),IF($E$6=2,{c}55,{c}52),NA())', True)
+            for age in range(37):
+                row = 65 + age
+                raw = 106 + age
+                put('C'+str(row), age)
+                put('C'+str(raw), age)
+                for dest, manualrow, synthrow in [(c,53,56),(pay,59,57)]:
+                    put(f'{dest}{row}',
+                        f'IF($E$6=2,POWER({dest}{raw},{c}${synthrow}),POWER(MIN({age}/{term},1),{c}${manualrow}))',
+                        True, calculated_style)
+                    put(f'{dest}{raw}', 0, style=calculated_style)
+                put(f'{c}105', key+' default')
+                put(f'{pay}105', key+' payoff')
+        # Replace obsolete midpoint validations with the active credit inputs.
+        validations = root.find(f'{{{NS}}}dataValidations')
+        if validations is not None:
+            for node in list(validations):
+                refs = node.get('sqref','').split()
+                if any(int(re.search(r'\d+', ref)[0]) >= 50 for ref in refs):
+                    validations.remove(node)
+        else:
+            validations = ET.SubElement(root, f'{{{NS}}}dataValidations')
+        for refs, lo, hi in [
+            (' '.join(c+str(r) for c in ('E','F','J','K') for r in (52,55)), '0', '.99'),
+            (' '.join(c+str(r) for c in ('E','F','J','K') for r in (53,56,57,59)), '.25', '4')]:
+            v = ET.SubElement(validations, f'{{{NS}}}dataValidation',
+                              type='decimal', operator='between', sqref=refs,
+                              showErrorMessage='1', errorStyle='stop', error='Enter a value within the allowed range.')
+            ET.SubElement(v, f'{{{NS}}}formula1').text=lo
+            ET.SubElement(v, f'{{{NS}}}formula2').text=hi
+        validations.set('count',str(len(validations)))
+        dimension = root.find(f'{{{NS}}}dimension')
+        if dimension is not None:
+            dimension.set('ref','A1:N145')
+    if idx in (3,4,5,6,7,8):
+        # These legacy logistic parameters no longer participate in any cash flow.
+        for address in ('C41','E41','C47','E47'):
+            if address in cells:
+                put(address,'')
+    def order(cell):
+        n=0
+        for ch in re.match('[A-Z]+',cell.get('r'))[0]:
+            n=n*26+ord(ch)-64
+        return n
+    for row in rows.values():
+        row[:] = sorted(row,key=order)
+    data[:] = sorted(data,key=lambda r:int(r.get('r')))
+
+
 def export_model(snapshot):
+    # The same settings generate both the formula inputs and the preview caches.
+    snapshot = deepcopy(snapshot)
+    if snapshot["source"] == "Historical vintage":
+        snapshot["source"] = SYNTHETIC
+    empirical = snapshot.get("historical_segment_risks", snapshot["segment_risks"])
+    snapshot.setdefault("curve_settings", {mode: default_settings(mode, empirical) for mode in (SYNTHETIC, MANUAL)})
+    snapshot["historical_segment_risks"] = empirical
+    snapshot["segment_risks"] = build_curves(snapshot["source"], snapshot["curve_settings"][snapshot["source"]], empirical)
     overrides = input_cells(snapshot)
     caches = cached_schedules(snapshot)
+    caches[2] = {}
+    for key, c, pay in [('CreditFresh Short-Term','E','H'),('MoneyKey Short-Term','F','I'),
+                        ('CreditFresh Installment','J','M'),('MoneyKey Installment','K','N')]:
+        risk=snapshot['segment_risks'][key]
+        caches[2][c+'58']=risk['total_default_rate_pct']/100
+        for age in range(37):
+            caches[2][f'{c}{65+age}']=risk['default_shape'][age]
+            caches[2][f'{pay}{65+age}']=risk['payoff_shape'][age]
     output = BytesIO()
     with zipfile.ZipFile(TEMPLATE) as source, zipfile.ZipFile(
         output, "w", zipfile.ZIP_DEFLATED
@@ -269,6 +391,7 @@ def export_model(snapshot):
                 idx = int(entry.filename.split("sheet")[-1].split(".")[0])
                 root = ET.fromstring(data)
                 _segment_template(root, idx)
+                _editable_curves(root, idx, snapshot)
                 for cell in root.iter(f"{{{NS}}}c"):
                     address = cell.get("r")
                     if idx == 2 and address in overrides:
