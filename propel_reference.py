@@ -20,12 +20,12 @@ MONTHLY_FUNDING = LATEST["originations"] / LATEST["months"]
 CLAB_GROWTH = LATEST["clab"] / LATEST["prior_clab"] - 1
 # Extrapolation of same-quarter YoY funded-dollar growth; not company guidance.
 MONTHLY_GROWTH_PCT = ((LATEST["originations"] / LATEST["prior_originations"]) ** (1 / 12) - 1) * 100
-APPLICATIONS = {"Short-Term": 89286, "Installment": 35714}
-OPENING_SHARES = {"Short-Term": .4, "Installment": .6}
+APPLICATIONS = {"Line of Credit": 89286, "Installment": 35714}
+OPENING_SHARES = {"Line of Credit": .4, "Installment": .6}
 # Scale illustrative conversion rates to the reported quarterly monthly average.
 # This is an effective funding conversion, not an estimate of actual approvals.
 FUNDING_SCALE = MONTHLY_FUNDING / (89286 * .30 * 1500 + 35714 * .45 * 4000)
-APPROVALS = {"Short-Term": 30 * FUNDING_SCALE, "Installment": 45 * FUNDING_SCALE}
+APPROVALS = {"Line of Credit": 30 * FUNDING_SCALE, "Installment": 45 * FUNDING_SCALE}
 
 
 def reference_path(months):

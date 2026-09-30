@@ -27,7 +27,7 @@ def inputs():
                    approval_rate_pct=40.,avg_loan_size=1500.,annual_yield_pct=50.,
                    midpoint_months=2.,total_default_rate_pct=20.,term_months=term,
                    horizon_months=36,opening_gross_clab=1e6,opening_age_months=None,
-                   monthly_growth_pct=0.) for p,term in [('Short-Term',12),('Installment',24)]}
+                   monthly_growth_pct=0.) for p,term in [('Line of Credit',12),('Installment',24)]}
 
 
 def test_exact_segments_outcomes_and_reproducibility(loans):
@@ -106,13 +106,13 @@ def test_segment_risk_change_is_isolated_and_balances_reconcile(key):
 
 
 def test_bad_term_and_missing_segment_fail_explicitly():
-    args=inputs(); args['Short-Term']['term_months']=9
+    args=inputs(); args['Line of Credit']['term_months']=9
     with pytest.raises(ValueError,match='source term'):
         segment_forecasts(args,.8,load_payment_curves())
     with pytest.raises(ValueError,match='exact'):
         generate(100,False,{'CreditFresh':.2})
     with pytest.raises(ValueError,match='Missing empirical'):
-        segment_forecasts(inputs(),.8,{'CreditFresh':load_payment_curves()['CreditFresh Short-Term']})
+        segment_forecasts(inputs(),.8,{'CreditFresh':load_payment_curves()['CreditFresh Line of Credit']})
 
 
 def test_no_mature_data_fails_and_zero_event_fallback(loans):
@@ -153,6 +153,7 @@ def test_excel_export_has_independent_segment_formulas_and_matching_caches():
     forecasts=segment_forecasts(inputs(),.8,risks)
     ns={'s':NS}
     with zipfile.ZipFile(BytesIO(output)) as book:
+        assert all(b"Short-Term" not in book.read(name) for name in book.namelist() if name.endswith(".xml"))
         sheets={i:ET.fromstring(book.read(f'xl/worksheets/sheet{i}.xml')) for i in [1,2,5,6,7,8]}
         def cell(i,address):
             return sheets[i].find(f'.//s:c[@r="{address}"]',ns)
@@ -160,7 +161,7 @@ def test_excel_export_has_independent_segment_formulas_and_matching_caches():
             return cell(i,address).find('s:f',ns).text
         def value(i,address):
             return float(cell(i,address).find('s:v',ns).text)
-        for sheet,key,col,paycol in [(5,'CreditFresh Short-Term','E','H'),(6,'CreditFresh Installment','J','M'),(7,'MoneyKey Short-Term','F','I'),(8,'MoneyKey Installment','K','N')]:
+        for sheet,key,col,paycol in [(5,'CreditFresh Line of Credit','E','H'),(6,'CreditFresh Installment','J','M'),(7,'MoneyKey Line of Credit','F','I'),(8,'MoneyKey Installment','K','N')]:
             risk=risks[key]; cfg=SEGMENTS[key]
             assert formula(sheet,'E40')==f"'Assumptions'!{col}58"
             assert f"${col}$65:${col}$101" in formula(sheet,'D52')

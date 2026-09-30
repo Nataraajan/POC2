@@ -33,7 +33,7 @@ DRIVER_LIMITS = {"monthly_applications_base": (0, 500000), "approval_rate_pct": 
                  "avg_loan_size": (100, 100000), "annual_yield_pct": (0, 200),
                  "monthly_growth_pct": (-20, 20), "opening_gross_clab": (0, 1e9)}
 CURVE_LIMITS = {"pd": (0, 99), "default_timing": (.25, 4), "payoff_timing": (.25, 4)}
-PORTFOLIO_LIMITS = {"creditfresh_share_pct": (0, 100), "short_term_opening_share_pct": (0, 100),
+PORTFOLIO_LIMITS = {"creditfresh_share_pct": (0, 100), "line_of_credit_opening_share_pct": (0, 100),
                     "horizon_months": (6, 36)}
 
 
@@ -71,7 +71,7 @@ def compare_scenario(context, changes):
                 if any(c["field"] == "opening_gross_clab" for c in changes):
                     raise ValueError("Change opening balances or the opening split in one preview, not both.")
                 total = sum(p["opening_gross_clab"] for p in trial["inputs"].values())
-                trial["inputs"]["Short-Term"]["opening_gross_clab"] = total * value / 100
+                trial["inputs"]["Line of Credit"]["opening_gross_clab"] = total * value / 100
                 trial["inputs"]["Installment"]["opening_gross_clab"] = total * (1 - value / 100)
         elif target in trial["inputs"]:
             trial["inputs"][target][field] = value

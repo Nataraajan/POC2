@@ -21,26 +21,26 @@ def test_allocation_preserves_total_and_exports(monkeypatch):
     at = app()
     total = full(at)['Opening gross CLAB'].iloc[0]
     original = full(at).copy()
-    at.slider(key='driver_short_term_share').set_value(50.0).run()
+    at.slider(key='driver_line_of_credit_share').set_value(50.0).run()
     assert not at.exception
     assert full(at)['Opening gross CLAB'].iloc[0] == pytest.approx(total)
-    assert at.session_state['driver_Short-Term_opening'] == pytest.approx(total/2)
+    assert at.session_state['driver_Line of Credit_opening'] == pytest.approx(total/2)
     assert at.session_state['driver_Installment_opening'] == pytest.approx(total/2)
     assert at.session_state['scenario'] == 'Custom'
     pd.testing.assert_series_equal(full(at).Originations, original.Originations)
     at.button(key='prepare_excel').click().run()
-    assert snapshots[-1]['products']['Short-Term']['active']['opening_gross_clab'] == pytest.approx(total/2)
+    assert snapshots[-1]['products']['Line of Credit']['active']['opening_gross_clab'] == pytest.approx(total/2)
     at.button(key='restore_opening_split').click().run()
     pd.testing.assert_frame_equal(full(at), original)
     for split in (0.0, 100.0):
-        at.slider(key='driver_short_term_share').set_value(split).run()
+        at.slider(key='driver_line_of_credit_share').set_value(split).run()
         assert not at.exception
         assert full(at)['Opening gross CLAB'].iloc[0] == pytest.approx(total)
 
 
 def test_scenarios_compare_without_mutating_live_inputs():
     at = app()
-    at.number_input(key='driver_Short-Term_apps').set_value(75000).run()
+    at.number_input(key='driver_Line of Credit_apps').set_value(75000).run()
     before = full(at).copy()
     at.button(key='compare_scenarios_button').click().run()
     assert not at.exception
@@ -56,11 +56,11 @@ def test_scenarios_compare_without_mutating_live_inputs():
 
 def test_preview_matches_engine_and_never_changes_inputs(context):
     saved = deepcopy(context)
-    changes = [{'target': 'Short-Term', 'field': 'monthly_applications_base', 'value': 100000},
-               {'target': 'portfolio', 'field': 'short_term_opening_share_pct', 'value': 50}]
+    changes = [{'target': 'Line of Credit', 'field': 'monthly_applications_base', 'value': 100000},
+               {'target': 'portfolio', 'field': 'line_of_credit_opening_share_pct', 'value': 50}]
     preview = compare_scenario(context, changes)
     trial = deepcopy(context)
-    trial['inputs']['Short-Term']['monthly_applications_base'] = 100000
+    trial['inputs']['Line of Credit']['monthly_applications_base'] = 100000
     total = sum(v['opening_gross_clab'] for v in trial['inputs'].values())
     for inputs in trial['inputs'].values(): inputs['opening_gross_clab'] = total/2
     assert preview['preview']['Revenue'] == pytest.approx(evaluate(trial).revenue.sum())
@@ -71,9 +71,9 @@ def test_preview_matches_engine_and_never_changes_inputs(context):
     {'target': 'portfolio', 'field': 'creditfresh_share_pct', 'value': float('nan')},
     {'target': 'portfolio', 'field': 'creditfresh_share_pct', 'value': 101},
     {'target': 'portfolio', 'field': 'horizon_months', 'value': 12.5},
-    {'target': 'Short-Term', 'field': 'term_months', 'value': 24},
+    {'target': 'Line of Credit', 'field': 'term_months', 'value': 24},
     {'target': '__import__', 'field': 'execute', 'value': 1},
-    {'target': 'Short-Term', 'field': 'annual_yield_pct', 'value': True},
+    {'target': 'Line of Credit', 'field': 'annual_yield_pct', 'value': True},
 ])
 def test_invalid_ai_changes_rejected(context, change):
     with pytest.raises(ValueError): compare_scenario(context, [change])

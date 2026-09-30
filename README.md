@@ -10,12 +10,12 @@ Install `requirements.txt` and `pytest`, then run `python -m streamlit run app.p
 
 | Synthetic segment | Term (months) | Target lifetime default | Default shape k | Payoff shape k | History row share |
 |---|---:|---:|---:|---:|---:|
-| CreditFresh Short-Term | 12 | 20% | 2.2 | 2.5 | 23.2% |
+| CreditFresh Line of Credit | 12 | 20% | 2.2 | 2.5 | 23.2% |
 | CreditFresh Installment | 24 | 16% | 1.6 | 1.8 | 34.8% |
-| MoneyKey Short-Term | 12 | 36% | 2.8 | 3.0 | 16.8% |
+| MoneyKey Line of Credit | 12 | 36% | 2.8 | 3.0 | 16.8% |
 | MoneyKey Installment | 24 | 28% | 2.0 | 2.1 | 25.2% |
 
-All rates, shape parameters, terms and splits are illustrative assumptions. Short-Term rates retain the old brand targets. The two Installment rates and segment timing parameters demonstrate independent behavior, without claiming an empirical basis for their chosen values. History retains the old 58/42 brand sampling mix, split 40/60 by loan type within each brand. Ticket centers remain $1,800/$700 by brand, with uniform +/-10% noise; these weight the timing experiment, rather than calibrating forecast loan sizes.
+All rates, shape parameters, terms and splits are illustrative assumptions. Line of Credit rates retain the old brand targets. The two Installment rates and segment timing parameters demonstrate independent behavior, without claiming an empirical basis for their chosen values. History retains the old 58/42 brand sampling mix, split 40/60 by loan type within each brand. Ticket centers remain $1,800/$700 by brand, with uniform +/-10% noise; these weight the timing experiment, rather than calibrating forecast loan sizes.
 
 Each loan has an explicit brand, loan type, term and composite segment key in `product`. Defaults follow a normalized exponential cumulative distribution reaching the segment target at its term. Vintage target rates receive uniform +/-8% relative noise, clipped to [0,1]. Non-defaulting loans receive a payoff month from a separate normalized exponential timing distribution. Default and payoff are mutually exclusive, occur in months 1 through term, and exhaust outcomes by term. Generation uses a local seed (default 42); identical inputs reproduce identical data.
 
@@ -46,7 +46,7 @@ Loans amortize on a level-payment schedule. Default loses the balance still owed
 
 Click **Prepare Excel model**, then **Download Excel model**. The workbook is generated only on request and reused within your session until exported assumptions change; changed assumptions require a fresh export. Downloading does not rerun the forecast.
 
-The Excel export retains four segment builds, two loan-type aggregations and a main schedule. On **Assumptions**, E6 selects manual (1) or synthetic (2). Segment columns E/F/J/K are CreditFresh Short-Term, MoneyKey Short-Term, CreditFresh Installment and MoneyKey Installment. Rows 52/53/59 hold manual PD/default timing/payoff timing; rows 55/56/57 hold synthetic PD override/default timing/payoff timing. Row 54 preserves original empirical PD, row 58 calculates active PD. Rows 65–101 calculate the applied conditional curves using the same power functions as Python; rows 106–142 retain original synthetic curves. Payoff arrays occupy H/I/M/N. Editing either source's active controls recalculates the corresponding segment and aggregate forecast. Obsolete midpoint and logistic-steepness controls have been removed. Terms must remain aligned with source curves in Excel as well.
+The Excel export retains four segment builds, two loan-type aggregations and a main schedule. On **Assumptions**, E6 selects manual (1) or synthetic (2). Segment columns E/F/J/K are CreditFresh Line of Credit, MoneyKey Line of Credit, CreditFresh Installment and MoneyKey Installment. Rows 52/53/59 hold manual PD/default timing/payoff timing; rows 55/56/57 hold synthetic PD override/default timing/payoff timing. Row 54 preserves original empirical PD, row 58 calculates active PD. Rows 65–101 calculate the applied conditional curves using the same power functions as Python; rows 106–142 retain original synthetic curves. Payoff arrays occupy H/I/M/N. Editing either source's active controls recalculates the corresponding segment and aggregate forecast. Obsolete midpoint and logistic-steepness controls have been removed. Terms must remain aligned with source curves in Excel as well.
 
 The exporter adapts the existing formula template at download time without adding a spreadsheet service to Streamlit. The assumptions JSON download now includes both source settings, original and applied curves, brand share and operating drivers. See `VALIDATION.md` for recalculation checks and limits.
 
@@ -64,7 +64,7 @@ The base uses the latest available reported quarter, June 30, 2026. All values b
 
 Sources: [FY2024 MD&A](https://cdn.propelholdings.com/web/pdfs/2024PropelQ4MDA.pdf) pp. 25–27; [FY2025 MD&A](https://cdn.propelholdings.com/web/pdfs/2025PropelQ4MDA.pdf) pp. 24–29; [Q2 2026 MD&A](https://cdn.propelholdings.com/web/pdfs/2026PropelQ2MDA.pdf) pp. 14–17 and 18–22. The source module `propel_reference.py` also retains prior-year comparators and links.
 
-Starting funding = Q2 2026 originations / 3 = $81,141,070.67 per month. Same-quarter funding growth = 243,423,212 / 194,394,548 - 1; its compounded monthly equivalent is applied to application growth. This extrapolation is not company guidance or a seasonality estimate. The starting application total remains 125,000 (89,286 Short-Term, 35,714 Installment). Ticket sizes and relative conversions remain illustrative; both conversion rates are multiplied by the same factor to reconcile initial funding to the reported quarterly average. Do not interpret these as actual company application counts or approval rates.
+Starting funding = Q2 2026 originations / 3 = $81,141,070.67 per month. Same-quarter funding growth = 243,423,212 / 194,394,548 - 1; its compounded monthly equivalent is applied to application growth. This extrapolation is not company guidance or a seasonality estimate. The starting application total remains 125,000 (89,286 Line of Credit, 35,714 Installment). Ticket sizes and relative conversions remain illustrative; both conversion rates are multiplied by the same factor to reconcile initial funding to the reported quarterly average. Do not interpret these as actual company application counts or approval rates.
 
 Base restores that growth and conversion. Upside/downside add/subtract 1 percentage point of monthly growth and 3 points of conversion. Reset restores all defaults. Existing sessions retain edited values until Reset.
 
@@ -86,7 +86,7 @@ real keys. Missing credentials show a setup message; API failures leave the mode
 usable. API calls have bounded output, a 30-second request timeout and bounded tool
 rounds. Configure provider billing limits for a publicly accessible deployment.
 
-Opening portfolio allocation defaults to 40% Short-Term / 60% Installment. Adjust
+Opening portfolio allocation defaults to 40% Line of Credit / 60% Installment. Adjust
 its share slider or total; the **40 / 60 preset** restores the split while preserving
 the current total. This allocation affects opening balances only. Applications,
 new lending and the CreditFresh share remain separate drivers.

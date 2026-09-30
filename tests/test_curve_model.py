@@ -68,6 +68,6 @@ def test_changes_are_segment_specific(field):
 @pytest.mark.parametrize('field,value',[('pd',-1),('pd',100),('pd',float('nan')),('default_timing',0),('payoff_timing',5)])
 def test_invalid_controls_rejected(field,value):
     settings=default_settings(MANUAL)
-    settings['CreditFresh Short-Term'][field]=value
+    settings['CreditFresh Line of Credit'][field]=value
     with pytest.raises(ValueError):
         build_curves(MANUAL,settings)

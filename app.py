@@ -99,6 +99,16 @@ def apply_historical():
 
 
 def initialize():
+    # Carry open sessions forward after the category label change.
+    for old in list(st.session_state):
+        if "Short-Term" in old:
+            new = old.replace("Short-Term", "Line of Credit")
+            st.session_state.setdefault(new, st.session_state[old])
+            del st.session_state[old]
+    for key in ("portfolio", "edit_product", "curve_segment", "triangle_product"):
+        value = st.session_state.get(key)
+        if isinstance(value, str) and "Short-Term" in value:
+            st.session_state[key] = value.replace("Short-Term", "Line of Credit")
     for product, d in PRODUCT_DEFAULTS.items():
         p = f"driver_{product}_"
         values = dict(
@@ -112,7 +122,7 @@ def initialize():
             growth=MONTHLY_GROWTH_PCT,
             stress=0.0,
             opening=OPENING_CLAB * OPENING_SHARES[product],
-            age=3 if product == "Short-Term" else 6,
+            age=3 if product == "Line of Credit" else 6,
             age_mix="Even balance by MOB (assumed)",
         )
         values["yield"] = values.pop("yield_")
@@ -321,14 +331,14 @@ manual_product_risks = curves_by_source[MANUAL]
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
 def opening_allocation_changed():
     total = st.session_state["driver_opening_total_m"] * 1e6
-    share = st.session_state["driver_short_term_share"] / 100
-    st.session_state["driver_Short-Term_opening"] = total * share
+    share = st.session_state["driver_line_of_credit_share"] / 100
+    st.session_state["driver_Line of Credit_opening"] = total * share
     st.session_state["driver_Installment_opening"] = total * (1-share)
     custom()
 
 
 def restore_opening_split():
-    st.session_state["driver_short_term_share"] = 40.0
+    st.session_state["driver_line_of_credit_share"] = 40.0
     opening_allocation_changed()
 
 
@@ -351,16 +361,16 @@ def render_driver_panel_and_forecast():
     if section in ("Forecasting", "Model assumptions"):
         total = sum(st.session_state[f"driver_{k}_opening"] for k in PRODUCT_DEFAULTS)
         st.session_state["driver_opening_total_m"] = total / 1e6
-        st.session_state["driver_short_term_share"] = (100 * st.session_state["driver_Short-Term_opening"] / total if total else 40.0)
+        st.session_state["driver_line_of_credit_share"] = (100 * st.session_state["driver_Line of Credit_opening"] / total if total else 40.0)
         with st.expander("Opening portfolio allocation", expanded=True):
             a, b, c = st.columns([1, 2, 1])
             a.number_input("Total opening CLAB ($M)", 0.0, None, step=1.0,
                            key="driver_opening_total_m", on_change=opening_allocation_changed)
-            b.slider("Short-Term share of opening CLAB (%)", 0.0, 100.0, step=1.0,
-                     key="driver_short_term_share", on_change=opening_allocation_changed)
+            b.slider("Line of Credit share of opening CLAB (%)", 0.0, 100.0, step=1.0,
+                     key="driver_line_of_credit_share", on_change=opening_allocation_changed)
             c.button("40 / 60 preset", key="restore_opening_split", on_click=restore_opening_split)
-            short = st.session_state["driver_short_term_share"]
-            st.caption(f"Short-Term {short:.1f}% = ${total*short/100/1e6:,.2f}M · Installment {100-short:.1f}% = ${total*(1-short/100)/1e6:,.2f}M. Splits the existing book only; changing the split preserves its total.")
+            short = st.session_state["driver_line_of_credit_share"]
+            st.caption(f"Line of Credit {short:.1f}% = ${total*short/100/1e6:,.2f}M · Installment {100-short:.1f}% = ${total*(1-short/100)/1e6:,.2f}M. Splits the existing book only; changing the split preserves its total.")
     if section == "Forecasting":
         with st.container(border=True, key="driver_panel"):
             driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
@@ -398,8 +408,8 @@ def render_driver_panel_and_forecast():
                 number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
                 st.caption("Preset approval is an effective funding conversion, fitted to reported dollars; not a disclosed approval rate.")
                 number(st, "Average loan size ($)", "size", 100, 100000, 100)
-                st.number_input("Synthetic segment term (months)", 1, 60, step=1, key=p + "term", disabled=True)
-                st.caption("Fixed at 12/24 months to match the source history. Changing terms requires regenerating matching curves.")
+                st.number_input("Synthetic curve window (months)", 1, 60, step=1, key=p + "term", disabled=True)
+                st.caption("12/24 months match the synthetic history. The 12-month window is not a contractual line-of-credit maturity; revolving redraws are not yet modeled.")
             with cols[2]:
                 st.markdown("**◇ Yield & Pricing**")
                 number(st, "Annual yield (%)", "yield", 0.0, 200.0, 1.0)

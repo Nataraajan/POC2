@@ -21,7 +21,7 @@ Full run after adding the reported-volume preset: **61 passed**, zero failures (
 
 `python precompute.py` completed with seed 42 and 2,000,000 loans over 36 monthly vintages (July 2023-June 2026). It produced 1,980 observed triangle cells and 76 segment/age default points. All small committed samples, statistics and curves now come from that same run. The full loan parquet is excluded from Git.
 
-Short-Term segments have 24 fully mature vintages at the June 2026 cutoff; Installment segments have 12. Both default and payoff curves use the same mature loans and original-ticket weights. The plotted overlay and applied empirical default arrays agree to floating-point precision.
+Line of Credit segments have 24 fully mature vintages at the June 2026 cutoff; Installment segments have 12. Both default and payoff curves use the same mature loans and original-ticket weights. The plotted overlay and applied empirical default arrays agree to floating-point precision.
 
 ## Assumptions and limits
 
@@ -29,7 +29,7 @@ The four fixed-term segments, default targets (20%, 16%, 36%, 28%), exponential 
 
 ## Workbook recalculation and visual checks
 
-The exported workbook was imported and recalculated using Artifact Tool, independently of the Python-produced cell caches. Six cases were exercised by changing actual workbook cells: synthetic baseline; synthetic PD/default/payoff adjustments; manual baseline; manual adjustments with a 65% brand share and Short-Term-only view; zero default with a 100% brand share; and 99% default with later defaults, earlier payoffs and MoneyKey Installment-only exposure.
+The exported workbook was imported and recalculated using Artifact Tool, independently of the Python-produced cell caches. Six cases were exercised by changing actual workbook cells: synthetic baseline; synthetic PD/default/payoff adjustments; manual baseline; manual adjustments with a 65% brand share and Line of Credit-only view; zero default with a 100% brand share; and 99% default with later defaults, earlier payoffs and MoneyKey Installment-only exposure.
 
 Across all six cases, 11 financial rows × 24 months = **1,584 recalculated values** matched Python. Maximum absolute difference was below $0.000001. The scan found no unexpected formula errors. The test scripts are `tests/export_workbook_cases.py` (argument: temporary output directory) and `tests/recalculate_workbook.mjs` (same directory; requires `@oai/artifact-tool` in the development environment). These are development checks, not additional Streamlit dependencies.
 

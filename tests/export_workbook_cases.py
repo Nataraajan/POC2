@@ -14,7 +14,7 @@ inputs={p:dict(monthly_applications_base=d['applications'],seasonality_pattern=[
               approval_rate_pct=d['approval_rate'],avg_loan_size=d['avg_loan_size'],
               annual_yield_pct=d['annual_yield'],term_months=d['term_months'],
               horizon_months=24,midpoint_months=1.,total_default_rate_pct=20.,
-              opening_gross_clab=255600000. if p=='Short-Term' else 383400000.,
+              opening_gross_clab=255600000. if p=='Line of Credit' else 383400000.,
               opening_age_months=None,monthly_growth_pct=0.) for p,d in PRODUCT_DEFAULTS.items()}
 snapshot=dict(source=SYNTHETIC,scenario='Base',view='Combined',creditfresh_share=.8,
               curve_settings=settings,historical_segment_risks=raw,segment_risks=raw,
@@ -26,10 +26,10 @@ for name,source,pd_rate,dt,pt,mix,view in [
     ('synthetic_base',SYNTHETIC,None,1.,1.,.8,'Combined'),
     ('synthetic_adjusted',SYNTHETIC,35.,.5,2.,.8,'Combined'),
     ('manual_base',MANUAL,None,2.2,2.5,.8,'Combined'),
-    ('manual_adjusted',MANUAL,30.,.75,.5,.65,'Short-Term'),
+    ('manual_adjusted',MANUAL,30.,.75,.5,.65,'Line of Credit'),
     ('zero_pd',SYNTHETIC,0.,1.,1.,1.,'Combined'),
     ('high_pd',SYNTHETIC,99.,4.,.25,0.,'Installment')]:
-    config=copy.deepcopy(settings[source]); key='CreditFresh Short-Term'
+    config=copy.deepcopy(settings[source]); key='CreditFresh Line of Credit'
     if pd_rate is not None: config[key]['pd']=pd_rate
     config[key].update(default_timing=dt,payoff_timing=pt)
     # Extreme case affects the segment included in the chosen view.

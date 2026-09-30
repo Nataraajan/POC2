@@ -87,12 +87,12 @@ def load_vintage_data():
 
 
 PRODUCT_DEFAULTS = {
-    "Short-Term": dict(
+    "Line of Credit": dict(
         applications=89286,
-        approval_rate=APPROVALS["Short-Term"],
+        approval_rate=APPROVALS["Line of Credit"],
         avg_loan_size=1500.0,
         annual_yield=100.0,
-        term_months=LOAN_TERMS["Short-Term"],
+        term_months=LOAN_TERMS["Line of Credit"],
         days_to_default=60,
         total_default_rate=12.0,
         color=RED,

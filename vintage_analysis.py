@@ -48,6 +48,8 @@ def load_precomputed():
     stats = json.loads((DATA_DIR / "generation_stats.json").read_text())
     sample = pd.read_csv(DATA_DIR / "loans_sample.csv")
     triangle = pd.read_parquet(DATA_DIR / "vintage_triangle.parquet")
+    # Historical parquet retains its original labels; only presentation names change.
+    triangle["product"] = triangle["product"].str.replace("Short-Term", "Line of Credit", regex=False)
     overlay = pd.read_csv(DATA_DIR / "overlay_curve.csv")
     return stats, sample, triangle, overlay
 

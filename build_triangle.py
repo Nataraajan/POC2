@@ -30,7 +30,9 @@ def months_elapsed(vintage_str: str) -> int:
 
 # --- Step 1: EXTRACTION ---
 def load_loans(path: str = "data/loans.parquet") -> pd.DataFrame:
-    return pd.read_parquet(path)
+    frame = pd.read_parquet(path)
+    frame["product"] = frame["product"].str.replace("Short-Term", "Line of Credit", regex=False)
+    return frame
 
 
 # --- Step 2: COMPUTATION (real SQL) ---

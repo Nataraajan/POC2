@@ -15,16 +15,16 @@ loan_id,product,brand,loan_type,vintage,origination_date,ticket,term_months,defa
 1579543,CreditFresh Installment,CreditFresh,Installment,2025-11,2025-11-26,1961.2,24,24,1,-1,0
 1589202,CreditFresh Installment,CreditFresh,Installment,2025-11,2025-11-08,1966.02,24,-1,0,4,1
 1698158,CreditFresh Installment,CreditFresh,Installment,2026-01,2026-01-28,1662.33,24,-1,0,4,1
-291982,CreditFresh Short-Term,CreditFresh,Short-Term,2023-12,2023-12-31,1862.2,12,-1,0,12,1
-394340,CreditFresh Short-Term,CreditFresh,Short-Term,2024-02,2024-02-12,1711.19,12,-1,0,4,1
-781501,CreditFresh Short-Term,CreditFresh,Short-Term,2024-09,2024-09-21,1958.22,12,-1,0,2,1
-893211,CreditFresh Short-Term,CreditFresh,Short-Term,2024-11,2024-11-05,1651.4,12,7,1,-1,0
-963081,CreditFresh Short-Term,CreditFresh,Short-Term,2024-12,2024-12-11,1651.13,12,-1,0,2,1
-1063165,CreditFresh Short-Term,CreditFresh,Short-Term,2025-02,2025-02-22,1787.15,12,-1,0,2,1
-1061702,CreditFresh Short-Term,CreditFresh,Short-Term,2025-02,2025-02-24,1650.12,12,-1,0,4,1
-1166585,CreditFresh Short-Term,CreditFresh,Short-Term,2025-04,2025-04-02,1792.0,12,-1,0,1,1
-1562604,CreditFresh Short-Term,CreditFresh,Short-Term,2025-11,2025-11-28,1879.5,12,-1,0,2,1
-1629055,CreditFresh Short-Term,CreditFresh,Short-Term,2025-12,2025-12-31,1698.04,12,-1,0,2,1
+291982,CreditFresh Line of Credit,CreditFresh,Line of Credit,2023-12,2023-12-31,1862.2,12,-1,0,12,1
+394340,CreditFresh Line of Credit,CreditFresh,Line of Credit,2024-02,2024-02-12,1711.19,12,-1,0,4,1
+781501,CreditFresh Line of Credit,CreditFresh,Line of Credit,2024-09,2024-09-21,1958.22,12,-1,0,2,1
+893211,CreditFresh Line of Credit,CreditFresh,Line of Credit,2024-11,2024-11-05,1651.4,12,7,1,-1,0
+963081,CreditFresh Line of Credit,CreditFresh,Line of Credit,2024-12,2024-12-11,1651.13,12,-1,0,2,1
+1063165,CreditFresh Line of Credit,CreditFresh,Line of Credit,2025-02,2025-02-22,1787.15,12,-1,0,2,1
+1061702,CreditFresh Line of Credit,CreditFresh,Line of Credit,2025-02,2025-02-24,1650.12,12,-1,0,4,1
+1166585,CreditFresh Line of Credit,CreditFresh,Line of Credit,2025-04,2025-04-02,1792.0,12,-1,0,1,1
+1562604,CreditFresh Line of Credit,CreditFresh,Line of Credit,2025-11,2025-11-28,1879.5,12,-1,0,2,1
+1629055,CreditFresh Line of Credit,CreditFresh,Line of Credit,2025-12,2025-12-31,1698.04,12,-1,0,2,1
 99486,MoneyKey Installment,MoneyKey,Installment,2023-08,2023-08-29,718.31,24,-1,0,7,1
 654425,MoneyKey Installment,MoneyKey,Installment,2024-06,2024-06-30,648.44,24,-1,0,2,1
 1484471,MoneyKey Installment,MoneyKey,Installment,2025-09,2025-09-09,646.68,24,2,1,-1,0
@@ -32,10 +32,10 @@ loan_id,product,brand,loan_type,vintage,origination_date,ticket,term_months,defa
 1715849,MoneyKey Installment,MoneyKey,Installment,2026-01,2026-01-13,657.13,24,-1,0,21,1
 1764398,MoneyKey Installment,MoneyKey,Installment,2026-02,2026-02-24,654.35,24,-1,0,11,1
 1828402,MoneyKey Installment,MoneyKey,Installment,2026-03,2026-03-02,641.99,24,-1,0,2,1
-147556,MoneyKey Short-Term,MoneyKey,Short-Term,2023-09,2023-09-12,689.46,12,2,1,-1,0
-530092,MoneyKey Short-Term,MoneyKey,Short-Term,2024-04,2024-04-06,709.14,12,-1,0,1,1
-533849,MoneyKey Short-Term,MoneyKey,Short-Term,2024-04,2024-04-10,716.01,12,-1,0,5,1
-1200072,MoneyKey Short-Term,MoneyKey,Short-Term,2025-04,2025-04-01,726.79,12,-1,0,1,1
-1253577,MoneyKey Short-Term,MoneyKey,Short-Term,2025-05,2025-05-25,633.29,12,1,1,-1,0
-1311929,MoneyKey Short-Term,MoneyKey,Short-Term,2025-06,2025-06-10,715.27,12,-1,0,9,1
-1657037,MoneyKey Short-Term,MoneyKey,Short-Term,2025-12,2025-12-14,752.99,12,-1,0,1,1
+147556,MoneyKey Line of Credit,MoneyKey,Line of Credit,2023-09,2023-09-12,689.46,12,2,1,-1,0
+530092,MoneyKey Line of Credit,MoneyKey,Line of Credit,2024-04,2024-04-06,709.14,12,-1,0,1,1
+533849,MoneyKey Line of Credit,MoneyKey,Line of Credit,2024-04,2024-04-10,716.01,12,-1,0,5,1
+1200072,MoneyKey Line of Credit,MoneyKey,Line of Credit,2025-04,2025-04-01,726.79,12,-1,0,1,1
+1253577,MoneyKey Line of Credit,MoneyKey,Line of Credit,2025-05,2025-05-25,633.29,12,1,1,-1,0
+1311929,MoneyKey Line of Credit,MoneyKey,Line of Credit,2025-06,2025-06-10,715.27,12,-1,0,9,1
+1657037,MoneyKey Line of Credit,MoneyKey,Line of Credit,2025-12,2025-12-14,752.99,12,-1,0,1,1

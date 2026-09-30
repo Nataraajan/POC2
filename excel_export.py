@@ -54,10 +54,10 @@ def input_cells(snapshot):
         "E6": 2 if snapshot["source"] == SYNTHETIC else 1,
         "E7": next(iter(inputs.values()))["active"]["horizon_months"],
         "E8": snapshot["scenario"],
-        "E9": {"Combined": 1, "Short-Term": 2, "Installment": 3}[snapshot["view"]],
+        "E9": {"Combined": 1, "Line of Credit": 2, "Installment": 3}[snapshot["view"]],
     }
     if snapshot.get("segment_risks"):
-        for brand, c, payoff_col in [("CreditFresh Short-Term","E","H"),("MoneyKey Short-Term","F","I"),("CreditFresh Installment","J","M"),("MoneyKey Installment","K","N")]:
+        for brand, c, payoff_col in [("CreditFresh Line of Credit","E","H"),("MoneyKey Line of Credit","F","I"),("CreditFresh Installment","J","M"),("MoneyKey Installment","K","N")]:
             out[f"{c}51"] = brand
             out[f"{c}64"] = brand + " default"
             out[f"{payoff_col}64"] = brand + " payoff"
@@ -73,7 +73,7 @@ def input_cells(snapshot):
                         (56,synthetic["default_timing"]),(57,synthetic["payoff_timing"]),
                         (59,manual["payoff_timing"])]:
                 out[f"{c}{r}"]=v
-    for p, c in [("Short-Term", "E"), ("Installment", "F")]:
+    for p, c in [("Line of Credit", "E"), ("Installment", "F")]:
         item = inputs[p]
         a = item["active"]
         values = {
@@ -158,12 +158,12 @@ def cached_schedules(snapshot):
         combined[24] * 12, earning, out=np.zeros(36), where=earning != 0
     )
     share = snapshot.get("creditfresh_share", 0.8)
-    short = builds["Short-Term"][24] if "Short-Term" in selected else np.zeros(36)
+    short = builds["Line of Credit"][24] if "Line of Credit" in selected else np.zeros(36)
     installment = builds["Installment"][24] if "Installment" in selected else np.zeros(36)
     if snapshot.get("segment_risks"):
-        cfshort=segments["CreditFresh"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
+        cfshort=segments["CreditFresh"]["Line of Credit"].revenue.to_numpy() if "Line of Credit" in selected else np.zeros(36)
         cfins=segments["CreditFresh"]["Installment"].revenue.to_numpy() if "Installment" in selected else np.zeros(36)
-        mkshort=segments["MoneyKey"]["Short-Term"].revenue.to_numpy() if "Short-Term" in selected else np.zeros(36)
+        mkshort=segments["MoneyKey"]["Line of Credit"].revenue.to_numpy() if "Line of Credit" in selected else np.zeros(36)
         mkins=segments["MoneyKey"]["Installment"].revenue.to_numpy() if "Installment" in selected else np.zeros(36)
     else:
         cfshort,cfins,mkshort,mkins=short*share,installment*share,short*(1-share),installment*(1-share)
@@ -171,7 +171,7 @@ def cached_schedules(snapshot):
     result = {}
     for sheet, rows in [
         (1, combined),
-        (3, builds["Short-Term"]),
+        (3, builds["Line of Credit"]),
         (4, builds["Installment"]),
     ]:
         cells = {
@@ -301,8 +301,8 @@ def _editable_curves(root, idx, snapshot):
         pct_style = cells['E52'].get('s')
         num_style = cells['E53'].get('s')
         calculated_style = cells['E58'].get('s')
-        for key, c, pay, termcol in [('CreditFresh Short-Term','E','H','E'),
-                                    ('MoneyKey Short-Term','F','I','E'),
+        for key, c, pay, termcol in [('CreditFresh Line of Credit','E','H','E'),
+                                    ('MoneyKey Line of Credit','F','I','E'),
                                     ('CreditFresh Installment','J','M','F'),
                                     ('MoneyKey Installment','K','N','F')]:
             term = snapshot['segment_risks'][key]['term_months']
@@ -372,7 +372,7 @@ def export_model(snapshot):
     overrides = input_cells(snapshot)
     caches = cached_schedules(snapshot)
     caches[2] = {}
-    for key, c, pay in [('CreditFresh Short-Term','E','H'),('MoneyKey Short-Term','F','I'),
+    for key, c, pay in [('CreditFresh Line of Credit','E','H'),('MoneyKey Line of Credit','F','I'),
                         ('CreditFresh Installment','J','M'),('MoneyKey Installment','K','N')]:
         risk=snapshot['segment_risks'][key]
         caches[2][c+'58']=risk['total_default_rate_pct']/100
@@ -385,6 +385,9 @@ def export_model(snapshot):
     ) as dest:
         for entry in source.infolist():
             data = source.read(entry.filename)
+            # Rename template labels and their sheet references together.
+            if entry.filename.endswith(".xml"):
+                data = data.replace(b"Short-Term", b"Line of Credit")
             if entry.filename.startswith(
                 "xl/worksheets/sheet"
             ) and entry.filename.endswith(".xml"):

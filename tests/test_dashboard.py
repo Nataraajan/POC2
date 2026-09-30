@@ -113,8 +113,8 @@ def test_default_portfolio_uses_639m_and_month_one_revenue():
 
 def test_product_persistence_and_combined_totals():
     at = app()
-    at.selectbox(key="portfolio").set_value("Short-Term").run()
-    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    at.selectbox(key="portfolio").set_value("Line of Credit").run()
+    at.number_input(key="driver_Line of Credit_apps").set_value(60000).run()
     short = full(at).copy()
     at.selectbox(key="portfolio").set_value("Installment").run()
     installment = full(at).copy()
@@ -122,14 +122,14 @@ def test_product_persistence_and_combined_totals():
     np.testing.assert_allclose(
         full(at).iloc[:, 1:], short.iloc[:, 1:] + installment.iloc[:, 1:]
     )
-    at.selectbox(key="portfolio").set_value("Short-Term").run()
-    assert at.number_input(key="driver_Short-Term_apps").value == 60000
+    at.selectbox(key="portfolio").set_value("Line of Credit").run()
+    assert at.number_input(key="driver_Line of Credit_apps").value == 60000
 
 
 def test_source_switch_and_restore():
     at = app()
     at.selectbox(key="driver_source").set_value("Manual assumptions").run()
-    key="driver_curve_Manual assumptions_CreditFresh Short-Term_pd"
+    key="driver_curve_Manual assumptions_CreditFresh Line of Credit_pd"
     at.number_input(key=key).set_value(30.0).run()
     manual = full(at).copy()
     at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
@@ -151,18 +151,18 @@ def test_growth_scenarios_reset_and_partial_quarter():
     next(b for b in at.button if b.label == "Reset").click().run()
     assert at.number_input(key="driver_horizon").value == 24
     np.testing.assert_allclose(full(at).Applications, (125000 * (1 + MONTHLY_GROWTH_PCT/100) ** np.arange(24)).reshape(8, 3).sum(axis=1))
-    assert at.number_input(key="driver_Short-Term_opening_m").value == pytest.approx(OPENING_CLAB * .4 / 1e6)
+    assert at.number_input(key="driver_Line of Credit_opening_m").value == pytest.approx(OPENING_CLAB * .4 / 1e6)
 
 
 def test_matching_term_is_fixed_and_single_age():
     at = app()
-    assert at.number_input(key="driver_Short-Term_term").disabled
-    assert at.number_input(key="driver_Short-Term_term").value == 12
-    at.selectbox(key="driver_Short-Term_age_mix").set_value(
+    assert at.number_input(key="driver_Line of Credit_term").disabled
+    assert at.number_input(key="driver_Line of Credit_term").value == 12
+    at.selectbox(key="driver_Line of Credit_age_mix").set_value(
         "Single cohort at specified MOB"
     ).run()
     assert not at.exception
-    assert at.number_input(key="driver_Short-Term_age").value == 3
+    assert at.number_input(key="driver_Line of Credit_age").value == 3
 
 
 def test_invalid_opening_age():
@@ -179,7 +179,7 @@ def test_vintage_app_smoke():
 
 def test_navigation_preserves_forecast():
     at = app()
-    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    at.number_input(key="driver_Line of Credit_apps").set_value(60000).run()
     at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
     expected = full(at).copy()
     for page in ["Vintage Analysis & Overlay", "Model assumptions"]:
@@ -187,7 +187,7 @@ def test_navigation_preserves_forecast():
         assert not at.exception
         assert at.radio(key="navigation").value == page
     at.radio(key="navigation").set_value("Forecasting").run()
-    assert at.number_input(key="driver_Short-Term_apps").value == 60000
+    assert at.number_input(key="driver_Line of Credit_apps").value == 60000
     assert at.selectbox(key="driver_source").value == "Synthetic vintage"
     pd.testing.assert_frame_equal(full(at), expected)
 
@@ -215,9 +215,9 @@ def test_horizontal_schedule_reconciles():
 
 def test_opening_millions_converts_to_engine_dollars():
     at = app()
-    at.number_input(key="driver_Short-Term_opening_m").set_value(300.0).run()
+    at.number_input(key="driver_Line of Credit_opening_m").set_value(300.0).run()
     assert not at.exception
-    assert at.session_state["driver_Short-Term_opening"] == 300_000_000
+    assert at.session_state["driver_Line of Credit_opening"] == 300_000_000
     assert full(at)["Opening gross CLAB"].iloc[0] == pytest.approx(300_000_000 + OPENING_CLAB * .6)
 
 
@@ -230,7 +230,7 @@ def test_single_vintage_workflow_and_adjustments():
     assert len(at.dataframe) >= 4
     triangle = at.dataframe[-1].value.copy()
     assert "Vintage overlay" not in at.radio(key="navigation").options
-    key="driver_curve_Synthetic vintage_CreditFresh Short-Term_default_timing"
+    key="driver_curve_Synthetic vintage_CreditFresh Line of Credit_default_timing"
     at.number_input(key=key).set_value(.5).run()
     pd.testing.assert_frame_equal(at.dataframe[-1].value, triangle)
     at.radio(key="navigation").set_value("Forecasting").run()
@@ -242,11 +242,11 @@ def test_single_vintage_workflow_and_adjustments():
 
 def test_manual_timing_is_live_and_reset_is_source_specific():
     at = app()
-    vintage_key="driver_curve_Synthetic vintage_CreditFresh Short-Term_pd"
+    vintage_key="driver_curve_Synthetic vintage_CreditFresh Line of Credit_pd"
     at.number_input(key=vintage_key).set_value(40.0).run()
     at.selectbox(key="driver_source").set_value("Manual assumptions").run()
     before=full(at).copy()
-    key="driver_curve_Manual assumptions_CreditFresh Short-Term_payoff_timing"
+    key="driver_curve_Manual assumptions_CreditFresh Line of Credit_payoff_timing"
     at.number_input(key=key).set_value(.5).run()
     assert not np.allclose(before.Revenue,full(at).Revenue)
     next(b for b in at.button if b.label == "Reset this source's curves").click().run()
@@ -275,9 +275,9 @@ def test_payoffs_change_revenue_and_reconcile():
     from product_forecast import default_product_curves, segment_forecasts, combine
     risks=default_product_curves()
     args=dict(monthly_applications_base=30000,seasonality_pattern=[1.]*12,approval_rate_pct=30.,avg_loan_size=1500.,annual_yield_pct=100.,midpoint_months=2.,total_default_rate_pct=20.,term_months=12,horizon_months=36,opening_gross_clab=0.,opening_age_months=None,monthly_growth_pct=0.)
-    with_pay=combine(v['Short-Term'] for v in segment_forecasts({'Short-Term':args},.8,risks).values())
+    with_pay=combine(v['Line of Credit'] for v in segment_forecasts({'Line of Credit':args},.8,risks).values())
     no_pay={b:{**r,'payoff_shape':[0.]*37} for b,r in risks.items()}
-    without=combine(v['Short-Term'] for v in segment_forecasts({'Short-Term':args},.8,no_pay).values())
+    without=combine(v['Line of Credit'] for v in segment_forecasts({'Line of Credit':args},.8,no_pay).values())
     assert with_pay.revenue.sum() < without.revenue.sum()
     np.testing.assert_allclose(with_pay.ending_gross_clab,with_pay.beginning_gross_clab+with_pay.originations-with_pay.principal_repaid-with_pay.charge_offs,atol=.00001)
 
@@ -292,7 +292,7 @@ def test_excel_is_prepared_on_request_and_invalidated_after_changes(monkeypatch)
 
     monkeypatch.setattr(excel_export, "export_model", export)
     at = app()
-    at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
+    at.number_input(key="driver_Line of Credit_apps").set_value(60000).run()
     assert not at.exception
     assert calls == []
     at.button(key="prepare_excel").click().run()
@@ -302,7 +302,7 @@ def test_excel_is_prepared_on_request_and_invalidated_after_changes(monkeypatch)
     assert any(x.label == "Download Excel model" for x in at.get("download_button"))
     at.run()
     assert len(calls) == 1
-    at.number_input(key="driver_Short-Term_apps").set_value(45000).run()
+    at.number_input(key="driver_Line of Credit_apps").set_value(45000).run()
     assert not at.exception
     assert len(calls) == 1
     assert "prepared_excel" not in at.session_state
@@ -326,6 +326,6 @@ def test_reported_volume_preset_and_reference_remain_distinct():
     table = at.table[0].value
     assert list(table.Period) == ["FY2024", "FY2025", "Q2 2026"]
     next(b for b in at.button if b.label == "Upside").click().run()
-    assert at.number_input(key="driver_Short-Term_growth").value == pytest.approx(MONTHLY_GROWTH_PCT + 1)
+    assert at.number_input(key="driver_Line of Credit_growth").value == pytest.approx(MONTHLY_GROWTH_PCT + 1)
     next(b for b in at.button if b.label == "Base").click().run()
     np.testing.assert_allclose(full(at).Originations, f.Originations)

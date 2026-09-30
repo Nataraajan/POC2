@@ -1,5 +1,5 @@
 {
-  "CreditFresh Short-Term": {
+  "CreditFresh Line of Credit": {
     "term_months": 12,
     "eligible_loans": 309318,
     "eligible_balance": 556882836.55,
@@ -175,7 +175,7 @@
       1.0
     ]
   },
-  "MoneyKey Short-Term": {
+  "MoneyKey Line of Credit": {
     "term_months": 12,
     "eligible_loans": 223984,
     "eligible_balance": 156766811.12999997,

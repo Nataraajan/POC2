@@ -10,12 +10,12 @@ console.log((await wb.inspect({kind:'table',range:"'Revenue model'!E24:I25",incl
 const cases=JSON.parse(await fs.readFile(new URL('excel-cases.json',workUrl),'utf8'));
 const a=wb.worksheets.getItem('Assumptions');
 const out=wb.worksheets.getItem('Revenue model');
-const mapping={'CreditFresh Short-Term':'E','MoneyKey Short-Term':'F','CreditFresh Installment':'J','MoneyKey Installment':'K'};
+const mapping={'CreditFresh Line of Credit':'E','MoneyKey Line of Credit':'F','CreditFresh Installment':'J','MoneyKey Installment':'K'};
 const metrics={11:'originations',13:'beginning_gross_clab',14:'principal_repaid',15:'charge_offs',16:'ending_gross_clab',18:'beginning_reserve',19:'new_provisions',20:'ending_reserve',21:'net_clab',24:'revenue',25:'net_revenue'};
 for(const c of cases){
   a.getRange('E6').values=[[c.source==='Synthetic vintage'?2:1]];
   a.getRange('E29').values=[[c.mix]];
-  a.getRange('E9').values=[[{'Combined':1,'Short-Term':2,'Installment':3}[c.view]]];
+  a.getRange('E9').values=[[{'Combined':1,'Line of Credit':2,'Installment':3}[c.view]]];
   for(const [key,col] of Object.entries(mapping)){
     const s=c.settings[key];
     const rows=c.source==='Synthetic vintage'?[55,56,57]:[52,53,59];

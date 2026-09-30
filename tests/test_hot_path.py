@@ -15,10 +15,10 @@ def test_cache_reuse_and_each_forecast_input_invalidates():
         at.run()
         assert run.call_count == 1
         pd.testing.assert_frame_equal(full(at), original)
-        for key, value in [('driver_Short-Term_apps', 95000),
+        for key, value in [('driver_Line of Credit_apps', 95000),
                            ('driver_creditfresh_mix', 60.0),
                            ('driver_horizon', 30),
-                           ('driver_curve_Synthetic vintage_CreditFresh Short-Term_pd', 40.0)]:
+                           ('driver_curve_Synthetic vintage_CreditFresh Line of Credit_pd', 40.0)]:
             before = run.call_count
             at.number_input(key=key).set_value(value).run()
             assert not at.exception

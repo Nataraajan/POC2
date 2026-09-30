@@ -1,17 +1,17 @@
 product,mob,cum_default
-CreditFresh Short-Term,0,0.0
-CreditFresh Short-Term,1,0.03743656505766303
-CreditFresh Short-Term,2,0.06897956729638055
-CreditFresh Short-Term,3,0.09473748375303563
-CreditFresh Short-Term,4,0.11685226616632745
-CreditFresh Short-Term,5,0.1345845215742626
-CreditFresh Short-Term,6,0.1497154578807247
-CreditFresh Short-Term,7,0.16226655802469986
-CreditFresh Short-Term,8,0.1728857918955736
-CreditFresh Short-Term,9,0.1814517100329549
-CreditFresh Short-Term,10,0.18847160339906874
-CreditFresh Short-Term,11,0.19423838824001555
-CreditFresh Short-Term,12,0.19912558885273482
+CreditFresh Line of Credit,0,0.0
+CreditFresh Line of Credit,1,0.03743656505766303
+CreditFresh Line of Credit,2,0.06897956729638055
+CreditFresh Line of Credit,3,0.09473748375303563
+CreditFresh Line of Credit,4,0.11685226616632745
+CreditFresh Line of Credit,5,0.1345845215742626
+CreditFresh Line of Credit,6,0.1497154578807247
+CreditFresh Line of Credit,7,0.16226655802469986
+CreditFresh Line of Credit,8,0.1728857918955736
+CreditFresh Line of Credit,9,0.1814517100329549
+CreditFresh Line of Credit,10,0.18847160339906874
+CreditFresh Line of Credit,11,0.19423838824001555
+CreditFresh Line of Credit,12,0.19912558885273482
 CreditFresh Installment,0,0.0
 CreditFresh Installment,1,0.013136068124791364
 CreditFresh Installment,2,0.02537800078369532
@@ -37,19 +37,19 @@ CreditFresh Installment,21,0.15192954187031243
 CreditFresh Installment,22,0.1549833397607059
 CreditFresh Installment,23,0.15807423154000327
 CreditFresh Installment,24,0.16103558057003303
-MoneyKey Short-Term,0,0.0
-MoneyKey Short-Term,1,0.07978189751929288
-MoneyKey Short-Term,2,0.14280998795998157
-MoneyKey Short-Term,3,0.1931291574521677
-MoneyKey Short-Term,4,0.23282614053897294
-MoneyKey Short-Term,5,0.2636966685232848
-MoneyKey Short-Term,6,0.2882828269213389
-MoneyKey Short-Term,7,0.3077345265382385
-MoneyKey Short-Term,8,0.32293372025038275
-MoneyKey Short-Term,9,0.3351279917050387
-MoneyKey Short-Term,10,0.34515930967766706
-MoneyKey Short-Term,11,0.3529009058819401
-MoneyKey Short-Term,12,0.35912794904856093
+MoneyKey Line of Credit,0,0.0
+MoneyKey Line of Credit,1,0.07978189751929288
+MoneyKey Line of Credit,2,0.14280998795998157
+MoneyKey Line of Credit,3,0.1931291574521677
+MoneyKey Line of Credit,4,0.23282614053897294
+MoneyKey Line of Credit,5,0.2636966685232848
+MoneyKey Line of Credit,6,0.2882828269213389
+MoneyKey Line of Credit,7,0.3077345265382385
+MoneyKey Line of Credit,8,0.32293372025038275
+MoneyKey Line of Credit,9,0.3351279917050387
+MoneyKey Line of Credit,10,0.34515930967766706
+MoneyKey Line of Credit,11,0.3529009058819401
+MoneyKey Line of Credit,12,0.35912794904856093
 MoneyKey Installment,0,0.0
 MoneyKey Installment,1,0.02476272138747348
 MoneyKey Installment,2,0.04865304536026138
