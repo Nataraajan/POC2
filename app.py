@@ -74,14 +74,14 @@ h1,h2,h3{color:#263a50}
 [data-testid="stSidebar"]{background:#263a50}
 .brand span{color:#68b8ff!important}
 .st-key-navigation [role="radiogroup"],.st-key-navigation [role="radiogroup"]>div{width:100%!important}
-.st-key-navigation label{display:flex!important;box-sizing:border-box;width:100%!important;min-height:62px;padding:12px 14px!important;margin:4px 0!important;border:1px solid #506277;border-radius:8px;background:#30465e;cursor:pointer;transition:background .15s}
-.st-key-navigation label > div{width:100%}
-.st-key-navigation label p{font-weight:550}
-.st-key-navigation label > div > div:first-child:not([data-testid]){display:none!important}
-.st-key-navigation label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
-.st-key-navigation label:hover{background:#344e69}
-.st-key-navigation label:has(input:checked){background:#ffffff!important;box-shadow:0 2px 8px #14253626}
-.st-key-navigation label:has(input:checked) p{color:#263a50!important;font-weight:700}
+.st-key-navigation [role="radiogroup"] label{display:flex!important;box-sizing:border-box;width:100%!important;min-height:62px;padding:12px 14px!important;margin:4px 0!important;border:1px solid #506277;border-radius:8px;background:#30465e;cursor:pointer;transition:background .15s}
+.st-key-navigation [role="radiogroup"] label > div{width:100%}
+.st-key-navigation [role="radiogroup"] label p{font-weight:550}
+.st-key-navigation [role="radiogroup"] label > div > div:first-child:not([data-testid]){display:none!important}
+.st-key-navigation [role="radiogroup"] label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
+.st-key-navigation [role="radiogroup"] label:hover{background:#344e69}
+.st-key-navigation [role="radiogroup"] label:has(input:checked){background:#ffffff!important;box-shadow:0 2px 8px #14253626}
+.st-key-navigation [role="radiogroup"] label:has(input:checked) p{color:#263a50!important;font-weight:700}
 .st-key-forecast_toolbar button{height:42px!important;min-height:42px!important;border-radius:8px!important;padding:6px 12px!important;border-color:#cbd5df!important}
 .st-key-forecast_toolbar button p{white-space:nowrap;font-size:.82rem!important}
 .st-key-forecast_toolbar button:hover{border-color:#0078d9!important;color:#0078d9!important;background:#edf6ff!important}
@@ -725,3 +725,4 @@ from ai_chat import render_chat
 if section == "Vintage Analysis & Overlay":
     st.session_state["ai_context"] = current_ai_context({k: args(k, historical) for k in PRODUCT_DEFAULTS})
 render_chat()
+
