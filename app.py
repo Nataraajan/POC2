@@ -77,8 +77,8 @@ h1,h2,h3{color:#263a50}
 .st-key-navigation label > div > div:first-child:not([data-testid]){display:none!important}
 .st-key-navigation label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
 .st-key-navigation label:hover{background:#344e69}
-.st-key-navigation label:has(input:checked){background:#0078d9!important;box-shadow:inset 3px 0 #a8d8ff}
-.st-key-navigation label:has(input:checked) p{color:white!important;font-weight:700}
+.st-key-navigation label:has(input:checked){background:#ffffff!important;box-shadow:0 2px 8px #14253626}
+.st-key-navigation label:has(input:checked) p{color:#263a50!important;font-weight:700}
 .st-key-forecast_toolbar button{height:42px!important;min-height:42px!important;border-radius:8px!important;padding:6px 12px!important;border-color:#cbd5df!important}
 .st-key-forecast_toolbar button p{white-space:nowrap;font-size:.82rem!important}
 .st-key-forecast_toolbar button:hover{border-color:#0078d9!important;color:#0078d9!important;background:#edf6ff!important}
