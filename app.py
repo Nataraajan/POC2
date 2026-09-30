@@ -74,6 +74,8 @@ h1,h2,h3{color:#263a50}
 [data-testid="stSidebar"]{background:#263a50}
 .brand span{color:#68b8ff!important}
 .st-key-navigation label{padding:10px 12px!important;margin:4px 0!important;border-radius:8px;transition:background .15s}
+.st-key-navigation label > div:first-of-type{display:none!important}
+.st-key-navigation label:focus-within{outline:2px solid #a8d8ff;outline-offset:2px}
 .st-key-navigation label:hover{background:#344e69}
 .st-key-navigation label:has(input:checked){background:#0078d9!important;box-shadow:inset 3px 0 #a8d8ff}
 .st-key-navigation label:has(input:checked) p{color:white!important;font-weight:700}
@@ -323,6 +325,7 @@ horizon = toolbar[1].number_input("Horizon (months)", 6, 36, 24, key="driver_hor
 for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
     col.button(
         name,
+        key="scenario_" + name,
         on_click=preset,
         args=(name,),
         width="stretch",
@@ -365,8 +368,22 @@ def current_ai_context(inputs, monthly=None):
                 scenario=st.session_state.get("scenario", "Base"), monthly=monthly)
 
 
+def highlight_scenario_controls():
+    # Render inside the results fragment so a driver edit clears the preset colour.
+    active = st.session_state.get("scenario", "Base")
+    css = []
+    for name in ("Base", "Upside", "Downside"):
+        selected = active == name
+        css.append(f".st-key-scenario_{name} button {{background:{'#0078d9' if selected else 'white'}!important;color:{'white' if selected else '#263a50'}!important;border-color:{'#0078d9' if selected else '#cbd5df'}!important}}")
+        css.append(f".st-key-scenario_{name} button p {{color:{'white' if selected else '#263a50'}!important;font-weight:{700 if selected else 400}}}")
+    if st.session_state.get("compare_scenarios", False):
+        css.append(".st-key-compare_scenarios_button button{background:#e1f1ff!important;border-color:#0078d9!important}")
+    st.markdown("<style>" + "".join(css) + "</style>", unsafe_allow_html=True)
+
+
 @st.fragment
 def render_driver_panel_and_forecast():
+    highlight_scenario_controls()
     # Preserve drivers for the loan type hidden during a fragment-only rerun.
     for key in list(st.session_state):
         if any(key.startswith(f"driver_{product}_") for product in PRODUCT_DEFAULTS):
@@ -697,6 +714,7 @@ if section != "Vintage Analysis & Overlay":
     render_driver_panel_and_forecast()
 
 if section == "Vintage Analysis & Overlay":
+    highlight_scenario_controls()
     st.subheader("Applied curves vs synthetic history")
     if st.toggle("Show vintage curve comparison", value=False, key="show_vintage_comparison"):
         render_curve_comparison(product_risks, product_fits)
