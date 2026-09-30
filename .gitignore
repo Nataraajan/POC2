@@ -4,3 +4,6 @@ data/loans.parquet
 
 .venv/
 .pytest_cache/
+
+.streamlit/secrets.toml
+.env

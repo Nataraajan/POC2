@@ -9,10 +9,10 @@ def state_key(source, segment, field):
     return f"driver_curve_{source}_{segment}_{field}"
 
 
-def render_controls(empirical, expanded=False):
+def render_controls(empirical, expanded=False, on_change=None):
     if st.session_state.get("driver_source") not in SOURCES:
         st.session_state["driver_source"] = SYNTHETIC
-    st.selectbox("Curve source", SOURCES, key="driver_source")
+    st.selectbox("Curve source", SOURCES, key="driver_source", on_change=on_change)
     source = st.session_state["driver_source"]
     for mode in SOURCES:
         for segment, fields in default_settings(mode, empirical).items():
@@ -23,6 +23,8 @@ def render_controls(empirical, expanded=False):
                 st.session_state[k] = st.session_state[k]
 
     def restore():
+        if on_change:
+            on_change()
         for segment, fields in default_settings(source, empirical).items():
             for field, value in fields.items():
                 st.session_state[state_key(source, segment, field)] = float(value)
@@ -37,11 +39,11 @@ def render_controls(empirical, expanded=False):
             st.markdown(f"**{segment} · {SEGMENTS[segment]['term_months']} months**")
             cols = st.columns(3)
             cols[0].number_input("Lifetime default (%)", 0.0, 99.0, step=.5,
-                                 key=state_key(source, segment, "pd"))
+                                 key=state_key(source, segment, "pd"), on_change=on_change)
             cols[1].number_input("Default timing", .25, 4.0, step=.05,
-                                 key=state_key(source, segment, "default_timing"))
+                                 key=state_key(source, segment, "default_timing"), on_change=on_change)
             cols[2].number_input("Payoff timing", .25, 4.0, step=.05,
-                                 key=state_key(source, segment, "payoff_timing"))
+                                 key=state_key(source, segment, "payoff_timing"), on_change=on_change)
         st.button("Reset this source's curves", on_click=restore)
         st.caption("Payoff means full loan closure, alongside scheduled principal repayments. Default and payoff outcomes are mutually exclusive. LGD 100%, no recoveries. These are hypothetical POC assumptions, not calibrated Propel credit assumptions.")
     settings = {mode: {segment: {field: st.session_state[state_key(mode, segment, field)]

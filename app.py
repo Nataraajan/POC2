@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 from product_forecast import default_product_curves, segment_forecasts, combine
 from curve_model import SYNTHETIC, MANUAL
+from scenario_tools import preset_values, metrics
 from curve_controls import render_controls, render_curve_comparison
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
@@ -83,12 +84,9 @@ def preset(name):
     for product in PRODUCT_DEFAULTS:
         p = f"driver_{product}_"
         d = PRODUCT_DEFAULTS[product]
-        st.session_state[p + "growth"] = { "Base": MONTHLY_GROWTH_PCT, "Upside": MONTHLY_GROWTH_PCT + 1, "Downside": MONTHLY_GROWTH_PCT - 1 }[
-            name
-        ]
-        st.session_state[p + "approval"] = (
-            d["approval_rate"] + {"Base": 0.0, "Upside": 3.0, "Downside": -3.0}[name]
-        )
+        values = preset_values(name, product)
+        st.session_state[p + "growth"] = values["monthly_growth_pct"]
+        st.session_state[p + "approval"] = values["approval_rate_pct"]
     st.session_state["scenario"] = name
 
 
@@ -264,6 +262,8 @@ initialize()
 
 if "navigation" not in st.session_state and st.query_params.get("page") == "vintage":
     st.session_state["navigation"] = "Vintage Analysis & Overlay"
+if st.session_state.get("navigation") == "Monthly schedule":
+    st.session_state["navigation"] = "Forecasting"
 if st.session_state.get("navigation") in ("Vintage analysis", "Vintage overlay"):
     st.session_state["navigation"] = "Vintage Analysis & Overlay"
 with st.sidebar:
@@ -272,7 +272,7 @@ with st.sidebar:
     )
     section = st.radio(
         "Navigation",
-        ["Forecasting", "Monthly schedule", "Vintage Analysis & Overlay", "Model assumptions"],
+        ["Forecasting", "Vintage Analysis & Overlay", "Model assumptions"],
         key="navigation",
         label_visibility="collapsed",
     )
@@ -301,7 +301,12 @@ for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
         width="stretch",
         help="Base uses Q2 2026 funded-volume growth and fitted conversion. Upside/downside vary monthly growth by 1 percentage point and conversion by 3 points. Credit assumptions are retained.",
     )
-toolbar[5].button("Reset", on_click=reset, width="stretch")
+def toggle_comparison():
+    st.session_state["compare_scenarios"] = not st.session_state.get("compare_scenarios", False)
+
+
+toolbar[5].button("Compare scenarios", key="compare_scenarios_button", on_click=toggle_comparison, width="stretch")
+toolbar[6].button("Reset", on_click=reset, width="stretch")
 selected = list(PRODUCT_DEFAULTS) if view == "Combined" else [view]
 st.session_state.setdefault("driver_creditfresh_mix", 80.0)
 mix_left, mix_right = st.columns([1, 3])
@@ -309,11 +314,30 @@ cf_mix = mix_left.number_input("CreditFresh share (%)", 0.0, 100.0, step=1.0, ke
 mix_right.caption(f"MoneyKey share: {1-cf_mix:.0%}. Editable product allocation applies to opening CLAB and originations within each loan type. This hypothetical POC assigns both loan types to each brand; it does not represent their actual product catalogue. Volume is allocated before applying each segment’s own risk curve; pricing and approval remain loan-type assumptions.")
 product_fits = default_product_curves()
 mode, curve_settings, curves_by_source = render_controls(
-    product_fits, expanded=section == "Vintage Analysis & Overlay")
+    product_fits, expanded=section == "Vintage Analysis & Overlay", on_change=custom)
 historical = mode == SYNTHETIC
 product_risks = curves_by_source[mode]
 manual_product_risks = curves_by_source[MANUAL]
 focus = toolbar[7].number_input("Detail month", 1, horizon, 1, key=f"focus_{horizon}")
+def opening_allocation_changed():
+    total = st.session_state["driver_opening_total_m"] * 1e6
+    share = st.session_state["driver_short_term_share"] / 100
+    st.session_state["driver_Short-Term_opening"] = total * share
+    st.session_state["driver_Installment_opening"] = total * (1-share)
+    custom()
+
+
+def restore_opening_split():
+    st.session_state["driver_short_term_share"] = 40.0
+    opening_allocation_changed()
+
+
+def current_ai_context(inputs, monthly=None):
+    return dict(inputs=inputs, share=cf_mix, selected=selected, source=mode,
+                settings=curve_settings[mode], empirical=product_fits,
+                scenario=st.session_state.get("scenario", "Base"), monthly=monthly)
+
+
 @st.fragment
 def render_driver_panel_and_forecast():
     # Preserve drivers for the loan type hidden during a fragment-only rerun.
@@ -321,15 +345,28 @@ def render_driver_panel_and_forecast():
         if any(key.startswith(f"driver_{product}_") for product in PRODUCT_DEFAULTS):
             st.session_state[key] = st.session_state[key]
     st.markdown(
-        f'<span class="badge">● {escape(st.session_state.get("scenario","Base"))} scenario · Live calculation</span>',
+        f'<span class="badge">● ACTIVE SCENARIO: {escape(st.session_state.get("scenario","Base"))}</span>',
         unsafe_allow_html=True,
     )
+    if section in ("Forecasting", "Model assumptions"):
+        total = sum(st.session_state[f"driver_{k}_opening"] for k in PRODUCT_DEFAULTS)
+        st.session_state["driver_opening_total_m"] = total / 1e6
+        st.session_state["driver_short_term_share"] = (100 * st.session_state["driver_Short-Term_opening"] / total if total else 40.0)
+        with st.expander("Opening portfolio allocation", expanded=True):
+            a, b, c = st.columns([1, 2, 1])
+            a.number_input("Total opening CLAB ($M)", 0.0, None, step=1.0,
+                           key="driver_opening_total_m", on_change=opening_allocation_changed)
+            b.slider("Short-Term share of opening CLAB (%)", 0.0, 100.0, step=1.0,
+                     key="driver_short_term_share", on_change=opening_allocation_changed)
+            c.button("40 / 60 preset", key="restore_opening_split", on_click=restore_opening_split)
+            short = st.session_state["driver_short_term_share"]
+            st.caption(f"Short-Term {short:.1f}% = ${total*short/100/1e6:,.2f}M · Installment {100-short:.1f}% = ${total*(1-short/100)/1e6:,.2f}M. Splits the existing book only; changing the split preserves its total.")
     if section == "Forecasting":
         with st.container(border=True, key="driver_panel"):
             driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
             driver_title.subheader("Forecast Drivers")
             driver_note.caption(
-                "US$639.083M reported CLAB at June 30, 2026, mapped to performing loans for this POC. The 40% / 60% split and age mix are assumptions."
+                "Opening CLAB allocation and age mix are editable assumptions. New lending is controlled separately by applications and approvals."
             )
             edit = (
                 driver_product.selectbox(
@@ -378,7 +415,7 @@ def render_driver_panel_and_forecast():
                 def update_opening():
                     st.session_state[p + "opening"] = st.session_state[p + "opening_m"] * 1_000_000
                     custom()
-                st.number_input("Opening gross CLAB ($M)", 0.0, 1000.0, step=1.0,
+                st.number_input("Opening gross CLAB ($M)", 0.0, None, step=1.0,
                                 format="%.2f", key=p + "opening_m", on_change=update_opening)
                 st.selectbox(
                     "Opening age mix",
@@ -409,6 +446,7 @@ def render_driver_panel_and_forecast():
     brand_forecasts = {brand: combine(parts[kind] for kind in selected) for brand, parts in segments.items()}
     df = combine(brand_forecasts.values())
     current = df.iloc[focus - 1]
+    st.session_state["ai_context"] = current_ai_context(all_inputs, df.to_dict(orient="records"))
     st.success(
         f"Applied to forecast: {mode.upper()} · Rates and timing below feed provisions, charge-offs, balances and revenue."
     )
@@ -422,7 +460,7 @@ def render_driver_panel_and_forecast():
             )
         )
     if section in ("Forecasting", "Model assumptions"):
-        with st.expander("Propel reported results and preset basis", expanded=section == "Model assumptions"):
+        with st.expander("Propel reported results and preset basis", expanded=False):
             st.caption("USD. FY2024 and FY2025 are full years; Q2 2026 is three months. Latest available quarter as reviewed September 30, 2026.")
             st.table(pd.DataFrame([{
                 "Period": r["period"], "Ending CLAB ($M)": round(r["clab"]/1e6, 2),
@@ -442,7 +480,7 @@ def render_driver_panel_and_forecast():
             st.markdown("Sources: " + " · ".join(f"[{r['period']} MD&A]({r['source']})" for r in HISTORY))
 
 
-    if section in ("Forecasting", "Monthly schedule"):
+    if section == "Forecasting":
         with st.container(border=True, key="schedule_panel"):
             st.markdown(
                 '<h3 id="monthly-forecast-schedule">Monthly Revenue & Forecast Schedule</h3>',
@@ -602,6 +640,32 @@ def render_driver_panel_and_forecast():
 
         render_forecast_charts(df, current, focus, product_risks, product_fits)
 
+    if st.session_state.get("compare_scenarios", False):
+        st.subheader("Scenario comparison")
+        st.caption("Same current allocation, curves, yields and opening ages. Presets change application growth and approval only. Values in USD millions; flows cover the selected horizon.")
+        rows = [{"Scenario": "Current · " + st.session_state.get("scenario", "Base"),
+                 **{k: v/1e6 for k, v in metrics(df).items()}}]
+        for name in ("Base", "Upside", "Downside"):
+            trial = {kind: dict(values, **preset_values(name, kind)) for kind, values in all_inputs.items()}
+            parts = cached_segment_forecasts(trial, cf_mix, product_risks, curve_settings[mode])
+            result = combine(parts[b][k] for b in parts for k in selected)
+            rows.append({"Scenario": name, **{k: v/1e6 for k, v in metrics(result).items()}})
+        st.table(pd.DataFrame(rows).set_index("Scenario").style.format("{:,.2f}"))
+
+    if section == "Model assumptions":
+        st.subheader("Model assumptions")
+        st.table(pd.DataFrame([
+            ("Opening CLAB", f"${sum(v['opening_gross_clab'] for v in all_inputs.values())/1e6:,.2f}M; allocation above", "Editable"),
+            ("Credit source", mode + "; adjustments above", "Synthetic / manual"),
+            ("Opening age", " / ".join(f"{k}: " + ("even by MOB" if v['opening_age_months'] is None else f"MOB {v['opening_age_months']}") for k,v in all_inputs.items()), "Assumed"),
+            ("Revenue", "(Opening CLAB − charge-offs) × annual yield / 12", "New lending earns next month"),
+            ("Provision", "Lifetime expected loss on new lending", "Opening reserve carried forward"),
+            ("Loss severity", "100%; no recoveries", "Charge-offs reduce loans and reserve"),
+            ("Repayment", "Scheduled amortization + full payoff", "No explicit redraws"),
+            ("Presets", "Upside / Downside: ±1pp monthly growth; ±3pp approval vs Base", "Other inputs retained"),
+        ], columns=["Assumption", "Current basis", "Treatment"]).set_index("Assumption"))
+        st.caption("Reported totals are reference anchors. Product allocation, credit curves and yields are illustrative, not calibrated Propel assumptions.")
+
 if section != "Vintage Analysis & Overlay":
     render_driver_panel_and_forecast()
 
@@ -613,22 +677,7 @@ if section == "Vintage Analysis & Overlay":
     from vintage_analysis import render_vintage_analysis
     render_vintage_analysis()
 
-if section == "Model assumptions":
-    st.markdown(
-        '<h3 id="model-assumptions">Model Assumptions</h3>', unsafe_allow_html=True
-    )
-    with st.expander(
-        "Opening book, provision timing & scenario definitions", expanded=True
-    ):
-        st.write(
-            "The default opening CLAB is US$639,083,326, reported by Propel at June 30, 2026. CLAB includes on- and off-balance-sheet programs and is not IFRS net loans receivable. Mapping this company-wide balance to performing synthetic loans is a POC approximation. The initial 40% Short-Term / 60% Installment allocation is illustrative. With age mix unknown, the default distributes each product's current balance evenly across MOB 0 through term minus 1. Alternatively, select a single cohort age. Remaining principal and default risk are conditional on survival to each age. Actual cohort data should replace these assumptions when available."
-        )
-        st.write(
-            "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
-        )
-        st.write(
-            "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. Early payoffs use the selected and adjusted payoff curve; recoveries are not modeled."
-        )
-        st.write(
-            "Base extrapolates Q2 2026 year-over-year funded-dollar growth as a compounded monthly application growth rate. Initial effective conversion rates are scaled to match one third of reported Q2 funding while retaining 125,000 assumed monthly applications. Upside/downside add/subtract 1 percentage point of monthly growth and 3 points of conversion. These are sensitivities, not company guidance. Credit curves and revenue yields remain synthetic."
-        )
+from ai_chat import render_chat
+if section == "Vintage Analysis & Overlay":
+    st.session_state["ai_context"] = current_ai_context({k: args(k, historical) for k in PRODUCT_DEFAULTS})
+render_chat()

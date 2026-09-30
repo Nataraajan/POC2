@@ -38,7 +38,7 @@ def test_charts_render_only_when_requested_in_their_section():
     at.toggle(key='show_applied_chart').set_value(True).run()
     assert not at.exception
     assert len(at.get('plotly_chart')) == 2
-    at.radio(key='navigation').set_value('Monthly schedule').run()
+    at.radio(key='navigation').set_value('Model assumptions').run()
     assert not at.get('plotly_chart')
     with patch.object(product_forecast, 'segment_forecasts', side_effect=AssertionError('Vintage must not forecast')):
         at.radio(key='navigation').set_value('Vintage Analysis & Overlay').run()

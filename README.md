@@ -71,3 +71,28 @@ Base restores that growth and conversion. Upside/downside add/subtract 1 percent
 CLAB YoY growth = 639,083,326 / 520,403,519 - 1. Its extrapolated balance path is a comparison only, never a balancing plug. The UI shows the gap against the cohort model. No claim is made that the synthetic runoff reproduces reported CLAB growth.
 
 The reported company-wide scope includes revolving credit, repeat funding and programs beyond our four hypothetical segments. CLAB is not IFRS net loans receivable. Mapping funded dollars/redraws to new fixed-term cohorts and CLAB to performing principal is a POC approximation. The published revenue yield is not a contractual amortization rate and is not copied into the pricing controls. Credit, payoff, LGD, opening-age and product-share assumptions remain synthetic; the equal-current-balance opening age mix still causes an initial runoff cliff. Actual cohort/payment data is required to calibrate it. The assumptions JSON contains source metadata; Excel receives the same operating inputs through the existing exporter.
+
+## Model assistant and scenarios
+
+Use **Ask AI** at the bottom right to explain the current model or preview changes.
+The assistant uses OpenAI (`gpt-5.4-mini` by default); what-if numbers come from the
+existing forecast engine. Previews never apply inputs. Conversation history resets
+when the model context changes. Questions and summarized model data are sent to
+OpenAI only on submission; no loan-level data or API keys are included in prompts.
+
+In Streamlit **Manage app → Settings → Secrets**, set `OPENAI_API_KEY` and optionally
+`OPENAI_MODEL`. See `.streamlit/secrets.toml.example` for the format. Never commit
+real keys. Missing credentials show a setup message; API failures leave the model
+usable. API calls have bounded output, a 30-second request timeout and bounded tool
+rounds. Configure provider billing limits for a publicly accessible deployment.
+
+Opening portfolio allocation defaults to 40% Short-Term / 60% Installment. Adjust
+its share slider or total; the **40 / 60 preset** restores the split while preserving
+the current total. This allocation affects opening balances only. Applications,
+new lending and the CreditFresh share remain separate drivers.
+
+**Compare scenarios**, immediately before Reset, shows current, Base, Upside and
+Downside results without changing the active scenario. Presets change growth and
+approval only, retaining all other current assumptions. The active scenario badge
+updates as inputs change. The monthly schedule is now solely on Forecasting;
+Model assumptions uses a compact table.

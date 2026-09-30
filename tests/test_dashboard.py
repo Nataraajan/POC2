@@ -182,7 +182,7 @@ def test_navigation_preserves_forecast():
     at.number_input(key="driver_Short-Term_apps").set_value(60000).run()
     at.selectbox(key="driver_source").set_value("Synthetic vintage").run()
     expected = full(at).copy()
-    for page in ["Monthly schedule", "Vintage Analysis & Overlay", "Model assumptions"]:
+    for page in ["Vintage Analysis & Overlay", "Model assumptions"]:
         at.radio(key="navigation").set_value(page).run()
         assert not at.exception
         assert at.radio(key="navigation").value == page
