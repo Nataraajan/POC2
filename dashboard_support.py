@@ -3,6 +3,7 @@
 import pandas as pd
 import streamlit as st
 from segments import LOAN_TERMS
+from propel_reference import APPROVALS
 from generate_loan_data import PRODUCTS as HIST_PRODUCTS
 from derive_vintage_curves import (
     LOANS_CSV,
@@ -88,7 +89,7 @@ def load_vintage_data():
 PRODUCT_DEFAULTS = {
     "Short-Term": dict(
         applications=89286,
-        approval_rate=30.0,
+        approval_rate=APPROVALS["Short-Term"],
         avg_loan_size=1500.0,
         annual_yield=100.0,
         term_months=LOAN_TERMS["Short-Term"],
@@ -98,7 +99,7 @@ PRODUCT_DEFAULTS = {
     ),
     "Installment": dict(
         applications=35714,
-        approval_rate=45.0,
+        approval_rate=APPROVALS["Installment"],
         avg_loan_size=4000.0,
         annual_yield=55.0,
         term_months=LOAN_TERMS["Installment"],

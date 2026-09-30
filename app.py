@@ -1,5 +1,6 @@
 """LendSight: driver-based CLAB forecast with an explicit opening portfolio."""
 from segments import SEGMENTS
+from propel_reference import OPENING_CLAB, OPENING_SHARES, MONTHLY_GROWTH_PCT, MONTHLY_FUNDING, CLAB_GROWTH, HISTORY, SOURCE_LATEST, reference_path
 
 import json
 from html import escape
@@ -84,7 +85,7 @@ def preset(name):
     for product in PRODUCT_DEFAULTS:
         p = f"driver_{product}_"
         d = PRODUCT_DEFAULTS[product]
-        st.session_state[p + "growth"] = {"Base": 0.0, "Upside": 2.0, "Downside": -2.0}[
+        st.session_state[p + "growth"] = { "Base": MONTHLY_GROWTH_PCT, "Upside": MONTHLY_GROWTH_PCT + 1, "Downside": MONTHLY_GROWTH_PCT - 1 }[
             name
         ]
         st.session_state[p + "approval"] = (
@@ -112,9 +113,9 @@ def initialize():
             term=d["term_months"],
             days=d["days_to_default"],
             rate=d["total_default_rate"],
-            growth=0.0,
+            growth=MONTHLY_GROWTH_PCT,
             stress=0.0,
-            opening=255_600_000.0 if product == "Short-Term" else 383_400_000.0,
+            opening=OPENING_CLAB * OPENING_SHARES[product],
             age=3 if product == "Short-Term" else 6,
             age_mix="Even balance by MOB (assumed)",
         )
@@ -224,7 +225,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.caption(
-        "Synthetic history. User-supplied opening CLAB; assumed product split and age mix."
+        "Synthetic credit curves. Q2 2026 reported volume anchors; assumed product split and age mix."
     )
 st.session_state.setdefault("driver_source", SYNTHETIC)
 mode = st.session_state["driver_source"]
@@ -246,7 +247,7 @@ for col, name in zip(toolbar[2:5], ["Base", "Upside", "Downside"]):
         on_click=preset,
         args=(name,),
         width="stretch",
-        help="Sets growth and approval; product credit assumptions are retained.",
+        help="Base uses Q2 2026 funded-volume growth and fitted conversion. Upside/downside vary monthly growth by 1 percentage point and conversion by 3 points. Credit assumptions are retained.",
     )
 toolbar[5].button("Reset", on_click=reset, width="stretch")
 toolbar[6].markdown(
@@ -270,7 +271,7 @@ if section == "Forecasting":
         driver_title, driver_note, driver_product = st.columns([1, 2.4, 1])
         driver_title.subheader("Forecast Drivers")
         driver_note.caption(
-            "$639M end-Q2 CLAB treated as gross performing loans. Initial 40% / 60% loan-type split and age mix are assumptions."
+            "US$639.083M reported CLAB at June 30, 2026, mapped to performing loans for this POC. The 40% / 60% split and age mix are assumptions."
         )
         edit = (
             driver_product.selectbox(
@@ -300,6 +301,7 @@ if section == "Forecasting":
         with cols[1]:
             st.markdown("**♧ Underwriting**")
             number(st, "Approval rate (%)", "approval", 0.0, 100.0, 1.0)
+            st.caption("Preset approval is an effective funding conversion, fitted to reported dollars; not a disclosed approval rate.")
             number(st, "Average loan size ($)", "size", 100, 100000, 100)
             st.number_input("Synthetic segment term (months)", 1, 60, step=1, key=p + "term", disabled=True)
             st.caption("Fixed at 12/24 months to match the source history. Changing terms requires regenerating matching curves.")
@@ -361,6 +363,26 @@ if historical:
             "$", r"\$"
         )
     )
+if section in ("Forecasting", "Model assumptions"):
+    with st.expander("Propel reported results and preset basis", expanded=section == "Model assumptions"):
+        st.caption("USD. FY2024 and FY2025 are full years; Q2 2026 is three months. Latest available quarter as reviewed September 30, 2026.")
+        st.table(pd.DataFrame([{
+            "Period": r["period"], "Ending CLAB ($M)": round(r["clab"]/1e6, 2),
+            "CLAB YoY (%)": round((r["clab"]/r["prior_clab"]-1)*100, 2),
+            "Funded in period ($M)": round(r["originations"]/1e6, 2),
+            "Funding YoY (%)": round((r["originations"]/r["prior_originations"]-1)*100, 2),
+            "Revenue in period ($M)": round(r["revenue"]/1e6, 2),
+        } for r in HISTORY]))
+        st.write(f"Base opening CLAB: ${OPENING_CLAB/1e6:,.3f}M. Starting monthly funding: ${MONTHLY_FUNDING/1e6:,.3f}M (Q2 average). Monthly volume growth: {MONTHLY_GROWTH_PCT:.4f}% (same-quarter YoY funding growth compounded monthly).")
+        st.write("125,000 applications, the application/product splits and ticket sizes remain assumptions. Effective conversion is fitted to funded dollars; it is not Propel's disclosed approval rate. Repeat borrowing and line-of-credit redraws are approximated as new synthetic cohorts. Seasonality stays flat.")
+        st.write("Reported CLAB covers more programs than this four-segment POC. The reported revenue yield also includes fee income and is not substituted for a contractual interest rate. Synthetic losses, repayments and opening ages are not calibrated to Propel.")
+        if view == "Combined":
+            comparison = reference_path(horizon)[-1]
+            st.write(f"At month {horizon}, continuing historical CLAB growth of {CLAB_GROWTH:.2%} annually gives a reference balance of ${comparison/1e6:,.2f}M. The current model projects ${df.ending_gross_clab.iloc[-1]/1e6:,.2f}M: a gap of ${(df.ending_gross_clab.iloc[-1]-comparison)/1e6:,.2f}M. The reference is not forced into the forecast.")
+        else:
+            st.caption("Select Combined to compare model CLAB with the company-wide reference.")
+        st.markdown("Sources: " + " · ".join(f"[{r['period']} MD&A]({r['source']})" for r in HISTORY))
+
 if section == "Forecasting":
     st.subheader("Annual forecast KPIs")
     cards = []
@@ -438,7 +460,7 @@ if section == "Forecasting":
         )
         runoff = current.principal_repaid + current.charge_offs
         st.caption(
-            f"Month {focus}: new originations {_fmt_dollar_scaled(current.originations)} vs repayments {_fmt_dollar_scaled(current.principal_repaid)} and charge-offs {_fmt_dollar_scaled(current.charge_offs)}. Gross CLAB {'falls' if runoff>current.originations else 'rises'} by {_fmt_dollar_scaled(abs(current.originations-runoff))}. Revenue follows the earning balance, not the opening $639M forever.".replace(
+            f"Month {focus}: new originations {_fmt_dollar_scaled(current.originations)} vs repayments {_fmt_dollar_scaled(current.principal_repaid)} and charge-offs {_fmt_dollar_scaled(current.charge_offs)}. Gross CLAB {'falls' if runoff>current.originations else 'rises'} by {_fmt_dollar_scaled(abs(current.originations-runoff))}. Revenue follows the earning balance. Opening age assumptions affect the initial runoff.".replace(
                 "$", r"\$"
             )
         )
@@ -504,6 +526,7 @@ if section in ("Forecasting", "Monthly schedule"):
             "source": mode,
             "curve_settings": curve_settings,
             "scenario": st.session_state.get("scenario", "Base"),
+            "public_reference": {"as_of": "2026-06-30", "source": SOURCE_LATEST, "opening_clab_usd": OPENING_CLAB, "monthly_funding_usd": MONTHLY_FUNDING, "monthly_volume_growth_pct": MONTHLY_GROWTH_PCT, "clab_growth_yoy": CLAB_GROWTH},
             "view": view,
             "products": {
                 product: {
@@ -577,7 +600,7 @@ if section == "Model assumptions":
         "Opening book, provision timing & scenario definitions", expanded=True
     ):
         st.write(
-            "The initial total opening CLAB is $639M at end-Q2, supplied by the user. The initial 40% Short-Term / 60% Installment allocation is illustrative. With age mix unknown, the default distributes each product's current balance evenly across MOB 0 through term minus 1. Alternatively, select a single cohort age. Remaining principal and default risk are conditional on survival to each age. Actual cohort data should replace these assumptions when available."
+            "The default opening CLAB is US$639,083,326, reported by Propel at June 30, 2026. CLAB includes on- and off-balance-sheet programs and is not IFRS net loans receivable. Mapping this company-wide balance to performing synthetic loans is a POC approximation. The initial 40% Short-Term / 60% Installment allocation is illustrative. With age mix unknown, the default distributes each product's current balance evenly across MOB 0 through term minus 1. Alternatively, select a single cohort age. Remaining principal and default risk are conditional on survival to each age. Actual cohort data should replace these assumptions when available."
         )
         st.write(
             "Opening reserve is the remaining expected loss on the existing book. It is a beginning balance, not month-1 provision expense. Changing credit assumptions recalculates this illustrative opening reserve; no accounting catch-up adjustment against an actual booked reserve is modeled."
@@ -586,5 +609,5 @@ if section == "Model assumptions":
             "Provision expense covers lifetime expected losses on new originations. Revenue = (opening gross CLAB − charge-offs) × annual yield / 12. New loans begin earning next month. Charge-offs reduce both gross CLAB and reserve, without a second P&L charge. Net revenue = revenue − new provisions. Early payoffs use the selected and adjusted payoff curve; recoveries are not modeled."
         )
         st.write(
-            "Scenario buttons change growth and approval only. Base: 0% growth / default approval. Upside: +2% monthly growth / +3 percentage points approval. Downside: −2% growth / −3 percentage points approval. Product default rates and timing are retained."
+            "Base extrapolates Q2 2026 year-over-year funded-dollar growth as a compounded monthly application growth rate. Initial effective conversion rates are scaled to match one third of reported Q2 funding while retaining 125,000 assumed monthly applications. Upside/downside add/subtract 1 percentage point of monthly growth and 3 points of conversion. These are sensitivities, not company guidance. Credit curves and revenue yields remain synthetic."
         )

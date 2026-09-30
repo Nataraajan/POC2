@@ -40,7 +40,7 @@ Both modes retain their own settings when switching sources or pages. Changes fe
 
 ## Forecast assumptions retained
 
-The editable 80/20 brand mix allocates applications and opening gross CLAB within each loan type **before** four independent forecasts are aggregated. History row shares do not impose forecast volume shares. Applications, approval, size, yield, growth and seasonality remain loan-type drivers. The user-supplied $639M opening book, illustrative 40/60 loan-type allocation and default even surviving-balance age mix remain unchanged.
+The editable 80/20 brand mix allocates applications and opening gross CLAB within each loan type **before** four independent forecasts are aggregated. History row shares do not impose forecast volume shares. Applications, approval, size, yield, growth and seasonality remain loan-type drivers. The reported June 30, 2026 opening CLAB is $639,083,326. Mapping it to a performing book, its 40/60 loan-type allocation and even surviving-balance age mix are illustrative.
 
 Loans amortize on a level-payment schedule. Default loses the balance still owed (100% LGD, no recoveries); early payoff removes remaining principal after the scheduled payment. Default probability therefore differs from lifetime principal loss. New originations receive an upfront provision; opening reserve covers remaining opening-book losses. Charge-offs reduce gross principal and reserve. Revenue uses beginning principal less that month's charge-offs; new originations earn from the next month. The model does not represent redraws or a real revolving-credit payment ledger.
 
@@ -52,4 +52,22 @@ The exporter adapts the existing formula template at download time without addin
 
 `generate_loan_data.py`, `derive_vintage_curves.py` and `loans.csv` retain the original standalone sigmoid-fitting demonstration. They are legacy examples, not inputs to the current dashboard or segment forecast.
 
-The default monthly application total is 125,000: 89,286 Short-Term and 35,714 Installment (the previous 5:2 application mix, rounded to whole applications). At unchanged approval rates and ticket sizes this produces $104.4639M monthly originations. These are illustrative volume assumptions. The equal-current-balance opening age mix causes heavy initial runoff; the opening book is not calibrated to a steady-state age distribution.
+## Reported volume preset (reviewed September 30, 2026)
+
+The base uses the latest available reported quarter, June 30, 2026. All values below are USD. Annual periods and quarterly flows must not be compared without adjusting the period length.
+
+| Period | Ending CLAB | Funded in period | Revenue in period |
+|---|---:|---:|---:|
+| FY2024 | 480,602,408 | 586,436,066 | 449,730,785 |
+| FY2025 | 589,548,106 | 774,263,664 | 589,807,759 |
+| Q2 2026 (three months) | 639,083,326 | 243,423,212 | 179,604,747 |
+
+Sources: [FY2024 MD&A](https://cdn.propelholdings.com/web/pdfs/2024PropelQ4MDA.pdf) pp. 25–27; [FY2025 MD&A](https://cdn.propelholdings.com/web/pdfs/2025PropelQ4MDA.pdf) pp. 24–29; [Q2 2026 MD&A](https://cdn.propelholdings.com/web/pdfs/2026PropelQ2MDA.pdf) pp. 14–17 and 18–22. The source module `propel_reference.py` also retains prior-year comparators and links.
+
+Starting funding = Q2 2026 originations / 3 = $81,141,070.67 per month. Same-quarter funding growth = 243,423,212 / 194,394,548 - 1; its compounded monthly equivalent is applied to application growth. This extrapolation is not company guidance or a seasonality estimate. The starting application total remains 125,000 (89,286 Short-Term, 35,714 Installment). Ticket sizes and relative conversions remain illustrative; both conversion rates are multiplied by the same factor to reconcile initial funding to the reported quarterly average. Do not interpret these as actual company application counts or approval rates.
+
+Base restores that growth and conversion. Upside/downside add/subtract 1 percentage point of monthly growth and 3 points of conversion. Reset restores all defaults. Existing sessions retain edited values until Reset.
+
+CLAB YoY growth = 639,083,326 / 520,403,519 - 1. Its extrapolated balance path is a comparison only, never a balancing plug. The UI shows the gap against the cohort model. No claim is made that the synthetic runoff reproduces reported CLAB growth.
+
+The reported company-wide scope includes revolving credit, repeat funding and programs beyond our four hypothetical segments. CLAB is not IFRS net loans receivable. Mapping funded dollars/redraws to new fixed-term cohorts and CLAB to performing principal is a POC approximation. The published revenue yield is not a contractual amortization rate and is not copied into the pricing controls. Credit, payoff, LGD, opening-age and product-share assumptions remain synthetic; the equal-current-balance opening age mix still causes an initial runoff cliff. Actual cohort/payment data is required to calibrate it. The assumptions JSON contains source metadata; Excel receives the same operating inputs through the existing exporter.

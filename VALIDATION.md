@@ -1,8 +1,8 @@
 # Validation - 30 September 2026
 
-The full suite contains 60 tests. Run `python -m pytest tests -q`.
+The full suite contains 61 tests. Run `python -m pytest tests -q`.
 
-Full run after updating the monthly application preset to 125,000 combined: **60 passed in 28.77 seconds**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
+Full run after adding the reported-volume preset: **61 passed**, zero failures (Python 3.11, Streamlit 1.64.0). `git diff --check` is clean. The default synthetic forecast now uses observed PDs; manual curves intentionally use an independent power family.
 
 ## Verified behavior
 
@@ -38,3 +38,5 @@ Changed assumption controls, calculated curve arrays and the affected forecast s
 Desktop Excel and LibreOffice were not available for native recalculation verification. The evidence above verifies the exported formulas in Artifact Tool; it does not claim testing in those native applications. Financial assumptions remain illustrative.
 
 The export lifecycle test confirms no workbook generation on initial load or input changes, reuse after preparation, and invalidation/rebuild after assumptions change. Workbook calculations are unchanged.
+
+Reported-volume validation checks the exact $639,083,326 opening balance, 125,000 starting applications, initial funding of $243,423,212 / 3, and the 12-month funding ratio of $243,423,212 / $194,394,548. Scenario/reset checks use compounded growth. The reported CLAB growth comparison does not override model balances. Public data covers FY2024, FY2025 and Q2 2026, with primary-source URLs in `propel_reference.py` and README. No credit or repayment calibration is claimed.

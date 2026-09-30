@@ -7,6 +7,7 @@ from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from propel_reference import OPENING_CLAB, MONTHLY_FUNDING, MONTHLY_GROWTH_PCT
 from clab_forecast_engine_v2 import (
     forecast_clab_v2,
     cumulative_default_pct,
@@ -93,7 +94,7 @@ def test_opening_survivors_independent_first_month_calculation():
 def test_default_portfolio_uses_639m_and_month_one_revenue():
     at = app()
     f = full(at)
-    assert f["Opening gross CLAB"].iloc[0] == 639e6
+    assert f["Opening gross CLAB"].iloc[0] == pytest.approx(OPENING_CLAB)
     assert f.Revenue.iloc[0] > 0
     assert f["Net revenue"].iloc[0] > 0
     assert f["Opening reserve"].iloc[0] > 0
@@ -149,8 +150,8 @@ def test_growth_scenarios_reset_and_partial_quarter():
     np.testing.assert_allclose(full(at).Revenue.sum(), f.Revenue.iloc[:24].sum())
     next(b for b in at.button if b.label == "Reset").click().run()
     assert at.number_input(key="driver_horizon").value == 24
-    np.testing.assert_allclose(full(at).Applications, 375000)  # quarterly view survives Reset
-    assert at.number_input(key="driver_Short-Term_opening_m").value == 255.6
+    np.testing.assert_allclose(full(at).Applications, (125000 * (1 + MONTHLY_GROWTH_PCT/100) ** np.arange(24)).reshape(8, 3).sum(axis=1))
+    assert at.number_input(key="driver_Short-Term_opening_m").value == pytest.approx(OPENING_CLAB * .4 / 1e6)
 
 
 def test_matching_term_is_fixed_and_single_age():
@@ -194,7 +195,7 @@ def test_navigation_preserves_forecast():
 def test_annual_kpis_and_partial_year():
     at = app()
     cards = next(m.value for m in at.markdown if 'class="kpi-grid"' in m.value)
-    assert "$1,253.57M" in cards  # 104.4639M originations x 12
+    assert f"${full(at).Originations.iloc[:12].sum()/1e6:,.2f}M" in cards  # annual sum with growth
     assert cards.count("Year 1 ·") == 6 and cards.count("Year 2 ·") == 6
     assert "PLL / provision expense" in cards
     assert "Charge-offs" not in cards
@@ -217,7 +218,7 @@ def test_opening_millions_converts_to_engine_dollars():
     at.number_input(key="driver_Short-Term_opening_m").set_value(300.0).run()
     assert not at.exception
     assert at.session_state["driver_Short-Term_opening"] == 300_000_000
-    assert full(at)["Opening gross CLAB"].iloc[0] == 683_400_000
+    assert full(at)["Opening gross CLAB"].iloc[0] == pytest.approx(300_000_000 + OPENING_CLAB * .6)
 
 
 def test_single_vintage_workflow_and_adjustments():
@@ -311,3 +312,20 @@ def test_excel_is_prepared_on_request_and_invalidated_after_changes(monkeypatch)
     assert len(calls) == 2
     assert calls[0]["products"] != calls[1]["products"]
     assert at.session_state["prepared_excel"]["data"] == b"workbook-2"
+
+
+def test_reported_volume_preset_and_reference_remain_distinct():
+    at = app()
+    f = full(at)
+    assert f.Applications.iloc[0] == pytest.approx(125000)
+    assert f.Originations.iloc[0] == pytest.approx(243423212 / 3)
+    assert f.Originations.iloc[12] / f.Originations.iloc[0] == pytest.approx(243423212 / 194394548)
+    assert f["Opening gross CLAB"].iloc[0] == pytest.approx(639083326)
+    # The reference growth must not overwrite the cohort roll-forward.
+    assert f["Gross CLAB"].iloc[11] != pytest.approx(639083326 ** 2 / 520403519)
+    table = at.table[0].value
+    assert list(table.Period) == ["FY2024", "FY2025", "Q2 2026"]
+    next(b for b in at.button if b.label == "Upside").click().run()
+    assert at.number_input(key="driver_Short-Term_growth").value == pytest.approx(MONTHLY_GROWTH_PCT + 1)
+    next(b for b in at.button if b.label == "Base").click().run()
+    np.testing.assert_allclose(full(at).Originations, f.Originations)
